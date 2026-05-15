@@ -999,10 +999,69 @@ fn icon(kind: &str) -> &'static str {
 }
 
 fn render_css() -> &'static str {
-    r#".btc-page { padding-top: var(--space-lg); }
+    r#":root {
+  --bg: #120903;
+  --bg-deep: #070301;
+  --accent-bg: #211005;
+  --panel-bg: rgba(35, 16, 4, 0.9);
+  --panel-bg-strong: rgba(48, 22, 5, 0.95);
+  --text: #ffd7a3;
+  --text-light: #e09a45;
+  --text-muted: #a96820;
+  --border: #b76312;
+  --border-soft: rgba(247, 147, 26, 0.28);
+  --accent: #f7931a;
+  --accent-hover: #ffb650;
+  --accent-text: #160800;
+  --code: #ffe0b8;
+  --preformatted: #ffc477;
+  --marked: #f7931a;
+  --heading-color: #ffbd66;
+  --link-decoration: rgba(247, 147, 26, 0.72);
+  --link-hover-shadow: 0 0 0.9rem rgba(247, 147, 26, 0.42);
+  --body-bg-start: #1a0b02;
+  --body-bg-mid: #120903;
+  --body-bg-end: #070301;
+  --body-ambient-top: rgba(247, 147, 26, 0.13);
+  --body-ambient-bottom: rgba(247, 147, 26, 0.08);
+  --body-grain-line: rgba(247, 147, 26, 0.016);
+  --header-veil-top: rgba(247, 147, 26, 0.11);
+  --header-veil-bottom: rgba(247, 147, 26, 0.035);
+  --header-shadow: rgba(247, 147, 26, 0.12);
+  --footer-divider: rgba(247, 147, 26, 0.58);
+  --button-top: #ffb650;
+  --button-bottom: #f7931a;
+  --button-hover-shadow: 0 0 1.25rem rgba(247, 147, 26, 0.48);
+  --crt-glow: 0 0 0.16rem rgba(247, 147, 26, 0.28),
+    0 0 0.8rem rgba(247, 147, 26, 0.14);
+  --crt-glow-strong: 0 0 0.22rem rgba(255, 190, 98, 0.66),
+    0 0 1.1rem rgba(247, 147, 26, 0.36);
+}
+.btc-page { padding-top: var(--space-lg); }
+.btc-page h1 {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+.btc-page h1::before {
+  content: "BTC";
+  display: inline-grid;
+  place-items: center;
+  min-inline-size: 2.45rem;
+  block-size: 1.45rem;
+  color: var(--accent-text);
+  background: linear-gradient(180deg, #ffbd66, var(--accent));
+  border: 1px solid var(--accent-hover);
+  border-radius: 999px;
+  font-family: var(--mono-font);
+  font-size: 0.68rem;
+  line-height: 1;
+  text-shadow: none;
+  box-shadow: 0 0 0.85rem rgba(247, 147, 26, 0.32);
+}
 .btc-muted { color: var(--text-light); font-size: 0.92rem; }
 .btc-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); gap: 0.5rem; padding: 0; border: 0; background: transparent; box-shadow: none; }
-.btc-stats div { border: 1px solid var(--border); border-radius: var(--standard-border-radius); padding: 0.45rem 0.55rem; background: var(--panel-bg); }
+.btc-stats div { border: 1px solid var(--border); border-radius: var(--standard-border-radius); padding: 0.45rem 0.55rem; background: linear-gradient(180deg, rgba(247, 147, 26, 0.07), rgba(247, 147, 26, 0.02)), var(--panel-bg); }
 .btc-stats strong { display: block; color: var(--accent-hover); font-size: 1.2rem; line-height: 1; }
 .btc-stats span { color: var(--text-light); font-size: 0.78rem; text-transform: uppercase; }
 .btc-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 0.6rem; align-items: end; margin: var(--space-lg) 0; }
@@ -1014,7 +1073,7 @@ fn render_css() -> &'static str {
 .btc-thread[hidden] { display: none; }
 .btc-thread summary { display: grid; grid-template-columns: 1.8rem 1fr; gap: 0.45rem; align-items: start; word-break: normal; }
 .btc-thread summary small { display: block; margin-top: 0.12rem; color: var(--text-light); font-weight: normal; }
-.btc-icon { display: inline-grid; place-items: center; width: 1.35rem; height: 1.35rem; border: 1px solid var(--border-soft); border-radius: 50%; color: var(--accent-hover); }
+.btc-icon { display: inline-grid; place-items: center; width: 1.35rem; height: 1.35rem; border: 1px solid var(--accent); border-radius: 50%; color: var(--accent-text); background: var(--accent); text-shadow: none; box-shadow: 0 0 0.65rem rgba(247, 147, 26, 0.28); }
 .btc-thread ol { margin: 0.45rem 0 0 1.75rem; padding-left: 1rem; }
 .btc-thread li { margin: 0.28rem 0; }
 .btc-thread time, .btc-kind, .btc-status { color: var(--text-light); font-size: 0.78rem; }
