@@ -919,35 +919,35 @@ fn render_html(config: &Config, feed: &Feed) -> String {
     .unwrap();
     writeln!(out, "<div class=\"btc-timeline\" id=\"btc-timeline\">").unwrap();
 
-    let mut grouped: BTreeMap<&str, Vec<&Event>> = BTreeMap::new();
+    let mut grouped: BTreeMap<String, Vec<&Event>> = BTreeMap::new();
     for event in &feed.events {
-        grouped.entry(&event.thread_id).or_default().push(event);
+        grouped.entry(group_key(event)).or_default().push(event);
     }
     let mut groups: Vec<_> = grouped.into_values().collect();
     groups.sort_by(|a, b| b[0].occurred_at.cmp(&a[0].occurred_at));
-    for group in groups {
+    for mut group in groups {
+        group.sort_by(|a, b| b.occurred_at.cmp(&a.occurred_at).then(a.id.cmp(&b.id)));
         let first = group[0];
         let year = first.occurred_at.get(0..4).unwrap_or("");
+        let row_kind = group_kind(&group);
+        let row_title = group_title(&group);
         writeln!(
             out,
             "<details class=\"btc-thread\" data-repo=\"{}\" data-type=\"{}\" data-year=\"{}\">",
             html_attr(&first.repo),
-            html_attr(&first.event_type),
+            html_attr(&row_kind),
             html_attr(year)
         )
         .unwrap();
-        writeln!(out, "<summary><span class=\"btc-icon\">{}</span><span class=\"btc-row-title\"><a href=\"{}\">{}</a><a class=\"btc-source-link\" href=\"{}\" aria-label=\"{}\">↗</a></span><span class=\"btc-row-repo\">{}</span><time class=\"btc-row-date\" datetime=\"{}\">{}</time><span class=\"btc-row-count\">{} item{}</span><span class=\"btc-row-kind\">{}</span></summary>",
-            icon(&first.event_type),
-            html_attr(&first.url),
-            html(&first.thread_title),
-            html_attr(&first.thread_url),
-            html_attr(source_link_label(&first.event_type)),
+        writeln!(out, "<summary><span class=\"btc-icon\">{}</span>{}<span class=\"btc-row-repo\">{}</span><time class=\"btc-row-date\" datetime=\"{}\">{}</time><span class=\"btc-row-count\">{} item{}</span><span class=\"btc-row-kind\">{}</span></summary>",
+            icon(&row_kind),
+            row_title_cell(&group, &row_title),
             html(&first.repo),
             html_attr(&first.occurred_at),
             html(&short_date(&first.occurred_at)),
             group.len(),
             if group.len() == 1 { "" } else { "s" },
-            html(&first.event_type.replace('_', " "))
+            html(&row_kind.replace('_', " "))
         ).unwrap();
         writeln!(out, "<div class=\"btc-thread-detail\">").unwrap();
         writeln!(out, "<ol>").unwrap();
@@ -1011,6 +1011,53 @@ fn status_badge(status: &str) -> String {
     }
 }
 
+fn group_key(event: &Event) -> String {
+    format!("{}:{}", event.repo, short_date(&event.occurred_at))
+}
+
+fn group_kind(group: &[&Event]) -> String {
+    let first = group[0].event_type.as_str();
+    if group.iter().all(|event| event.event_type == first) {
+        first.to_string()
+    } else {
+        "mixed".into()
+    }
+}
+
+fn group_title(group: &[&Event]) -> String {
+    if group.len() == 1 {
+        group[0].thread_title.clone()
+    } else {
+        format!("{} activities", group.len())
+    }
+}
+
+fn row_title_cell(group: &[&Event], title: &str) -> String {
+    if group.len() != 1 {
+        return format!(
+            "<span class=\"btc-row-title\"><span class=\"btc-row-title-text\">{}</span></span>",
+            html(title)
+        );
+    }
+
+    let event = group[0];
+    let source = if event.url == event.thread_url {
+        String::new()
+    } else {
+        format!(
+            "<a class=\"btc-source-link\" href=\"{}\" aria-label=\"{}\">↗</a>",
+            html_attr(&event.thread_url),
+            html_attr(source_link_label(&event.event_type))
+        )
+    };
+    format!(
+        "<span class=\"btc-row-title\"><a href=\"{}\">{}</a>{}</span>",
+        html_attr(&event.url),
+        html(title),
+        source
+    )
+}
+
 fn icon(kind: &str) -> &'static str {
     match kind {
         "pull_request" => "⑂",
@@ -1018,6 +1065,7 @@ fn icon(kind: &str) -> &'static str {
         "commit" => "●",
         "comment" => "↩",
         "issue" => "!",
+        "mixed" => "⋯",
         _ => "•",
     }
 }
@@ -1106,7 +1154,7 @@ fn render_css() -> &'static str {
 .btc-thread summary { display: grid; grid-template-columns: 1.8rem minmax(10rem, 1fr) minmax(9rem, 0.65fr) 6.2rem 4.6rem 7.8rem; gap: 0.55rem; align-items: center; min-block-size: 2.25rem; word-break: normal; }
 .btc-thread summary::marker { color: var(--accent-hover); }
 .btc-row-title { display: inline-flex; align-items: center; gap: 0.3rem; min-width: 0; overflow: hidden; white-space: nowrap; color: var(--heading-color); }
-.btc-row-title > a:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btc-row-title > :is(a, .btc-row-title-text):first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .btc-source-link, .btc-source-link:visited { flex: 0 0 auto; color: var(--text-light); text-decoration: none; border: 1px solid var(--border-soft); border-radius: var(--standard-border-radius); padding: 0 0.22rem; font-size: 0.72rem; line-height: 1.1; background: rgba(247, 147, 26, 0.045); }
 .btc-source-link:hover, .btc-source-link:focus-visible { color: var(--accent-text); background: var(--accent); border-color: var(--accent); }
 .btc-row-repo { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-light); font-size: 0.78rem; font-weight: normal; }
