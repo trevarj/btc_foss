@@ -930,12 +930,11 @@ fn render_html(config: &Config, feed: &Feed) -> String {
             html_attr(year)
         )
         .unwrap();
-        writeln!(out, "<summary><span class=\"btc-icon\">{}</span><span class=\"btc-row-main\"><span class=\"btc-row-title\">{}</span><small><time datetime=\"{}\">{}</time> · {} · {} item{}</small></span><span class=\"btc-row-kind\">{}</span></summary>",
+        writeln!(out, "<summary><span class=\"btc-icon\">{}</span><span class=\"btc-row-title\">{}</span><time class=\"btc-row-date\" datetime=\"{}\">{}</time><span class=\"btc-row-count\">{} item{}</span><span class=\"btc-row-kind\">{}</span></summary>",
             icon(&first.event_type),
             html(&first.thread_title),
             html_attr(&first.occurred_at),
             html(&short_date(&first.occurred_at)),
-            html(&first.repo),
             group.len(),
             if group.len() == 1 { "" } else { "s" },
             html(&first.event_type.replace('_', " "))
@@ -1092,11 +1091,10 @@ fn render_css() -> &'static str {
 .btc-timeline { position: relative; display: grid; gap: 0.35rem; }
 .btc-thread { margin: 0; border-color: var(--border-soft); }
 .btc-thread[hidden] { display: none; }
-.btc-thread summary { display: grid; grid-template-columns: 1.8rem minmax(0, 1fr) auto; gap: 0.55rem; align-items: center; min-block-size: 2.7rem; word-break: normal; }
+.btc-thread summary { display: grid; grid-template-columns: 1.8rem minmax(10rem, 1fr) auto auto auto; gap: 0.55rem; align-items: center; min-block-size: 2.25rem; word-break: normal; }
 .btc-thread summary::marker { color: var(--accent-hover); }
-.btc-thread summary small { display: block; margin-top: 0.12rem; color: var(--text-light); font-weight: normal; }
-.btc-row-main { min-width: 0; }
-.btc-row-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--heading-color); }
+.btc-row-title { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--heading-color); }
+.btc-row-date, .btc-row-count { color: var(--text-light); font-size: 0.78rem; font-weight: normal; white-space: nowrap; }
 .btc-row-kind { color: var(--text-light); border: 1px solid var(--border-soft); border-radius: var(--standard-border-radius); padding: 0.03rem 0.32rem; font-size: 0.76rem; font-weight: normal; white-space: nowrap; text-transform: uppercase; }
 .btc-icon { display: inline-grid; place-items: center; width: 1.35rem; height: 1.35rem; border: 1px solid var(--accent); border-radius: 50%; color: var(--accent-text); background: var(--accent); text-shadow: none; box-shadow: 0 0 0.65rem rgba(247, 147, 26, 0.28); }
 .btc-thread-detail { margin-top: 0.45rem; padding-top: 0.45rem; border-top: 1px solid var(--border-soft); }
@@ -1107,8 +1105,9 @@ fn render_css() -> &'static str {
 .btc-kind, .btc-status { border: 1px solid var(--border-soft); border-radius: var(--standard-border-radius); padding: 0.03rem 0.28rem; }
 @media only screen and (max-width: 720px) {
   .btc-filters { grid-template-columns: 1fr; }
-  .btc-thread summary { grid-template-columns: 1.5rem minmax(0, 1fr); }
-  .btc-row-kind { grid-column: 2; justify-self: start; }
+  .btc-thread summary { grid-template-columns: 1.5rem minmax(0, 1fr) auto; gap: 0.4rem; }
+  .btc-row-count { display: none; }
+  .btc-row-kind { display: none; }
 }
 "#
 }
