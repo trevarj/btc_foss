@@ -972,8 +972,10 @@ fn render_html(config: &Config, feed: &Feed) -> String {
         writeln!(out, "<div class=\"btc-thread-detail\">").unwrap();
         writeln!(out, "<ul>").unwrap();
         for event in group {
-            writeln!(out, "<li data-type=\"{}\"><span class=\"btc-detail-icon\">{}</span><time datetime=\"{}\">{}</time> <span class=\"btc-kind\">{}</span> <a href=\"{}\">{}</a>{}</li>",
+            writeln!(out, "<li data-type=\"{}\" data-title=\"{}\" data-url=\"{}\"><span class=\"btc-detail-icon\">{}</span><time datetime=\"{}\">{}</time> <span class=\"btc-kind\">{}</span> <a href=\"{}\">{}</a>{}</li>",
                 html_attr(&event.event_type),
+                html_attr(&event.title),
+                html_attr(&event.url),
                 icon(&event.event_type),
                 html_attr(&event.occurred_at),
                 html(&short_date(&event.occurred_at)),
@@ -1241,7 +1243,53 @@ fn render_js() -> &'static str {
     r#"(function () {
   const form = document.getElementById("btc-filters");
   const items = Array.from(document.querySelectorAll(".btc-thread"));
+  const defaults = new Map();
+  for (const item of items) {
+    const summary = item.querySelector("summary");
+    defaults.set(item, {
+      icon: summary.querySelector(".btc-icon").textContent,
+      title: summary.querySelector(".btc-row-title").innerHTML,
+      kind: summary.querySelector(".btc-row-kind").textContent,
+    });
+  }
   if (!form) return;
+  function typeLabel(type, count) {
+    const labels = {
+      pull_request: ["pull request", "pull requests"],
+      review: ["review", "reviews"],
+      commit: ["commit", "commits"],
+      comment: ["comment", "comments"],
+      issue: ["issue", "issues"],
+    }[type] || [type.replaceAll("_", " "), `${type.replaceAll("_", " ")}s`];
+    return count === 1 ? labels[0] : labels[1];
+  }
+  function setSummary(item, type, rows) {
+    const summary = item.querySelector("summary");
+    const icon = summary.querySelector(".btc-icon");
+    const title = summary.querySelector(".btc-row-title");
+    const kind = summary.querySelector(".btc-row-kind");
+    if (!type) {
+      const original = defaults.get(item);
+      icon.textContent = original.icon;
+      title.innerHTML = original.title;
+      kind.textContent = original.kind;
+      return;
+    }
+    icon.textContent = rows[0].querySelector(".btc-detail-icon").textContent;
+    kind.textContent = type.replaceAll("_", " ");
+    title.replaceChildren();
+    if (rows.length === 1) {
+      const link = document.createElement("a");
+      link.href = rows[0].dataset.url;
+      link.textContent = rows[0].dataset.title;
+      title.append(link);
+    } else {
+      const label = document.createElement("span");
+      label.className = "btc-row-title-text";
+      label.textContent = `${rows.length} ${typeLabel(type, rows.length)}`;
+      title.append(label);
+    }
+  }
   function apply() {
     const data = new FormData(form);
     const repo = data.get("repo");
@@ -1249,12 +1297,16 @@ fn render_js() -> &'static str {
     const year = data.get("year");
     for (const item of items) {
       const detailRows = Array.from(item.querySelectorAll("[data-type]"));
+      const matchingRows = type ? detailRows.filter((row) => row.dataset.type === type) : detailRows;
       const ok = (!repo || item.dataset.repo === repo) &&
-        (!type || item.dataset.type === type || detailRows.some((row) => row.dataset.type === type)) &&
+        (!type || matchingRows.length > 0) &&
         (!year || item.dataset.year === year);
       item.hidden = !ok;
       for (const row of detailRows) {
         row.hidden = Boolean(type && row.dataset.type !== type);
+      }
+      if (ok) {
+        setSummary(item, type, matchingRows);
       }
     }
   }
