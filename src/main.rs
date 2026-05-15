@@ -1041,20 +1041,10 @@ fn row_title_cell(group: &[&Event], title: &str) -> String {
     }
 
     let event = group[0];
-    let source = if event.url == event.thread_url {
-        String::new()
-    } else {
-        format!(
-            "<a class=\"btc-source-link\" href=\"{}\" aria-label=\"{}\">↗</a>",
-            html_attr(&event.thread_url),
-            html_attr(source_link_label(&event.event_type))
-        )
-    };
     format!(
-        "<span class=\"btc-row-title\"><a href=\"{}\">{}</a>{}</span>",
+        "<span class=\"btc-row-title\"><a href=\"{}\">{}</a></span>",
         html_attr(&event.url),
-        html(title),
-        source
+        html(title)
     )
 }
 
@@ -1067,17 +1057,6 @@ fn icon(kind: &str) -> &'static str {
         "issue" => "!",
         "mixed" => "⋯",
         _ => "•",
-    }
-}
-
-fn source_link_label(kind: &str) -> &'static str {
-    match kind {
-        "pull_request" => "View pull request",
-        "review" => "View reviewed pull request",
-        "commit" => "View commits",
-        "comment" => "View comment thread",
-        "issue" => "View issue",
-        _ => "View source",
     }
 }
 
@@ -1155,8 +1134,6 @@ fn render_css() -> &'static str {
 .btc-thread summary::marker { color: var(--accent-hover); }
 .btc-row-title { display: inline-flex; align-items: center; gap: 0.3rem; min-width: 0; overflow: hidden; white-space: nowrap; color: var(--heading-color); }
 .btc-row-title > :is(a, .btc-row-title-text):first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.btc-source-link, .btc-source-link:visited { flex: 0 0 auto; color: var(--text-light); text-decoration: none; border: 1px solid var(--border-soft); border-radius: var(--standard-border-radius); padding: 0 0.22rem; font-size: 0.72rem; line-height: 1.1; background: rgba(247, 147, 26, 0.045); }
-.btc-source-link:hover, .btc-source-link:focus-visible { color: var(--accent-text); background: var(--accent); border-color: var(--accent); }
 .btc-row-repo { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-light); font-size: 0.78rem; font-weight: normal; }
 .btc-row-date, .btc-row-count { color: var(--text-light); font-size: 0.78rem; font-weight: normal; font-variant-numeric: tabular-nums; text-align: end; white-space: nowrap; }
 .btc-row-kind { display: inline-flex; justify-content: center; inline-size: 100%; color: var(--text-light); border: 1px solid var(--border-soft); border-radius: var(--standard-border-radius); padding: 0.03rem 0.32rem; font-size: 0.76rem; font-weight: normal; white-space: nowrap; text-transform: uppercase; }
