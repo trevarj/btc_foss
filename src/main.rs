@@ -1103,15 +1103,15 @@ fn render_css() -> &'static str {
 .btc-timeline { position: relative; display: grid; gap: 0.35rem; }
 .btc-thread { margin: 0; border-color: var(--border-soft); }
 .btc-thread[hidden] { display: none; }
-.btc-thread summary { display: grid; grid-template-columns: 1.8rem minmax(8rem, 1fr) minmax(8rem, 0.7fr) auto auto auto; gap: 0.55rem; align-items: center; min-block-size: 2.25rem; word-break: normal; }
+.btc-thread summary { display: grid; grid-template-columns: 1.8rem minmax(10rem, 1fr) minmax(9rem, 0.65fr) 6.2rem 4.6rem 7.8rem; gap: 0.55rem; align-items: center; min-block-size: 2.25rem; word-break: normal; }
 .btc-thread summary::marker { color: var(--accent-hover); }
 .btc-row-title { display: inline-flex; align-items: center; gap: 0.3rem; min-width: 0; overflow: hidden; white-space: nowrap; color: var(--heading-color); }
 .btc-row-title > a:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .btc-source-link, .btc-source-link:visited { flex: 0 0 auto; color: var(--text-light); text-decoration: none; border: 1px solid var(--border-soft); border-radius: var(--standard-border-radius); padding: 0 0.22rem; font-size: 0.72rem; line-height: 1.1; background: rgba(247, 147, 26, 0.045); }
 .btc-source-link:hover, .btc-source-link:focus-visible { color: var(--accent-text); background: var(--accent); border-color: var(--accent); }
 .btc-row-repo { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-light); font-size: 0.78rem; font-weight: normal; }
-.btc-row-date, .btc-row-count { color: var(--text-light); font-size: 0.78rem; font-weight: normal; white-space: nowrap; }
-.btc-row-kind { color: var(--text-light); border: 1px solid var(--border-soft); border-radius: var(--standard-border-radius); padding: 0.03rem 0.32rem; font-size: 0.76rem; font-weight: normal; white-space: nowrap; text-transform: uppercase; }
+.btc-row-date, .btc-row-count { color: var(--text-light); font-size: 0.78rem; font-weight: normal; font-variant-numeric: tabular-nums; text-align: end; white-space: nowrap; }
+.btc-row-kind { display: inline-flex; justify-content: center; inline-size: 100%; color: var(--text-light); border: 1px solid var(--border-soft); border-radius: var(--standard-border-radius); padding: 0.03rem 0.32rem; font-size: 0.76rem; font-weight: normal; white-space: nowrap; text-transform: uppercase; }
 .btc-icon { display: inline-grid; place-items: center; width: 1.35rem; height: 1.35rem; border: 1px solid var(--accent); border-radius: 50%; color: var(--accent-text); background: var(--accent); text-shadow: none; box-shadow: 0 0 0.65rem rgba(247, 147, 26, 0.28); }
 .btc-thread-detail { margin-top: 0.45rem; padding-top: 0.45rem; border-top: 1px solid var(--border-soft); }
 .btc-thread ol { margin: 0.45rem 0 0 1.75rem; padding-left: 1rem; }
