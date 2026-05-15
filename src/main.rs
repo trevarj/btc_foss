@@ -1120,6 +1120,8 @@ html[data-theme="bitcoin"]::backdrop {
   --disabled: #352717;
   --selection-text: #fff2db;
   --selection-bg: rgba(247, 147, 26, 0.32);
+  --measure: 78rem;
+  --page-gutter: clamp(0.75rem, 4vw, 4rem);
   --body-bg-start: #121922;
   --body-bg-mid: #0c0f14;
   --body-bg-end: #05070a;
