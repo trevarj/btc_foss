@@ -2,7 +2,7 @@ username = "trevarj"
 title = "Bitcoin FOSS Contributions"
 base_path = "/btc_foss/"
 site_root = "https://trevs.site"
-bootstrap_months = 5
+bootstrap_months = 12
 
 # Curated repositories are the only repositories published in the public feed.
 # Discovery finds Bitcoin-related candidates from recent public activity and

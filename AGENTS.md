@@ -8,6 +8,7 @@
 - Config is [config/site.toml](/home/trev/Workspace/rust-projects/btc_contribs/config/site.toml).
 - Fixture data is [fixtures/feed.json](/home/trev/Workspace/rust-projects/btc_contribs/fixtures/feed.json).
 - Deployment workflow is [.github/workflows/pages.yml](/home/trev/Workspace/rust-projects/btc_contribs/.github/workflows/pages.yml).
+- The intended contribution window is the last 12 months. `--full` should rebuild that configured window from scratch, not scan all history.
 
 ## Environment
 
@@ -117,6 +118,7 @@ icon | title | repo | date | type
 - Avoid empty generic “Commits” rows. Commit titles should include useful context such as commit count and repo.
 - Preserve event details when making rows more compact. Compact layout must not discard repo, title, type, or date context.
 - Grouping currently happens by `repo + short_date(occurred_at)`.
+- Normal collection should include reviews and comments from the configured one-year window, including older `bitcoin/bitcoin` activity that would be missed by a shorter cache refresh.
 
 ## Source Guidelines
 

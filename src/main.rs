@@ -100,17 +100,14 @@ fn collect_cmd(args: &[String]) -> Result<()> {
         feed.generated_at = now_rfc3339();
     }
 
-    let from = if full {
-        "1970-01-01T00:00:00Z".to_string()
-    } else {
-        months_ago_rfc3339(config.bootstrap_months)
-    };
+    let from = months_ago_rfc3339(config.bootstrap_months);
     let to = now_rfc3339();
     let graph = fetch_contributions(&token, &config.username, &from, &to)?;
     let (events, candidates) = extract_contributions(&config, &graph)?;
     merge_events(&mut feed.events, events);
     let comments = fetch_comment_events(&token, &config, &from)?;
     merge_events(&mut feed.events, comments);
+    prune_events_before(&mut feed.events, &from);
     feed.events
         .sort_by(|a, b| b.occurred_at.cmp(&a.occurred_at).then(a.id.cmp(&b.id)));
 
@@ -608,6 +605,14 @@ query($query:String!) {
                 {
                     continue;
                 }
+                let occurred_at = comment
+                    .get("createdAt")
+                    .and_then(Json::string)
+                    .unwrap_or("")
+                    .to_string();
+                if occurred_at.is_empty() || occurred_at.as_str() < from {
+                    continue;
+                }
                 events.push(Event {
                     id: comment
                         .get("id")
@@ -622,11 +627,7 @@ query($query:String!) {
                         .and_then(Json::string)
                         .unwrap_or("")
                         .to_string(),
-                    occurred_at: comment
-                        .get("createdAt")
-                        .and_then(Json::string)
-                        .unwrap_or("")
-                        .to_string(),
+                    occurred_at,
                     thread_id: format!("{repo}#{number}"),
                     thread_title: thread_title.clone(),
                     thread_url: thread_url.clone(),
@@ -675,6 +676,10 @@ fn merge_events(existing: &mut Vec<Event>, incoming: Vec<Event>) {
         by_id.insert(event.id.clone(), event);
     }
     *existing = by_id.into_values().collect();
+}
+
+fn prune_events_before(events: &mut Vec<Event>, from: &str) {
+    events.retain(|event| event.occurred_at.as_str() >= from);
 }
 
 fn candidate_report(config: &Config, candidates: &BTreeSet<String>) -> String {
@@ -921,7 +926,7 @@ fn render_html(config: &Config, feed: &Feed) -> String {
     stat(&mut out, "Events", feed.events.len());
     stat(&mut out, "Repos", repos.len());
     for (event_type, count) in &type_counts {
-        stat(&mut out, event_type, *count);
+        stat(&mut out, event_type_count_label(event_type), *count);
     }
     writeln!(out, "</section>").unwrap();
     writeln!(out, "<form class=\"btc-filters\" id=\"btc-filters\">").unwrap();
@@ -997,6 +1002,18 @@ fn stat(out: &mut String, label: &str, value: usize) {
         html(&label.replace('_', " "))
     )
     .unwrap();
+}
+
+fn event_type_count_label(kind: &str) -> &'static str {
+    match kind {
+        "pull_request" => "pull requests",
+        "review" => "reviews",
+        "commit" => "commits",
+        "comment" => "comments",
+        "issue" => "issues",
+        "mixed" => "mixed",
+        _ => "events",
+    }
 }
 
 fn select<'a>(out: &mut String, name: &str, label: &str, options: impl Iterator<Item = &'a str>) {
@@ -1545,6 +1562,39 @@ mod tests {
     }
 
     #[test]
+    fn prunes_events_before_collection_window() {
+        let mut events = vec![
+            Event {
+                id: "old".into(),
+                event_type: "comment".into(),
+                repo: "bitcoin/bitcoin".into(),
+                title: "old".into(),
+                url: "u".into(),
+                occurred_at: "2025-05-14T23:59:59Z".into(),
+                thread_id: "t".into(),
+                thread_title: "t".into(),
+                thread_url: "u".into(),
+                status: String::new(),
+            },
+            Event {
+                id: "new".into(),
+                event_type: "review".into(),
+                repo: "bitcoin/bitcoin".into(),
+                title: "new".into(),
+                url: "u".into(),
+                occurred_at: "2025-05-15T00:00:00Z".into(),
+                thread_id: "t".into(),
+                thread_title: "t".into(),
+                thread_url: "u".into(),
+                status: String::new(),
+            },
+        ];
+        prune_events_before(&mut events, "2025-05-15T00:00:00Z");
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].id, "new");
+    }
+
+    #[test]
     fn feed_round_trip_fixture() {
         let feed = Feed::from_json_file(Path::new("fixtures/feed.json")).unwrap();
         assert!(feed.events.len() >= 3);
@@ -1566,7 +1616,7 @@ mod tests {
             title: "Bitcoin FOSS Contributions".into(),
             base_path: "/btc_foss/".into(),
             site_root: "https://trevs.site".into(),
-            bootstrap_months: 5,
+            bootstrap_months: 12,
             allowlist: BTreeSet::new(),
             keywords: vec!["bitcoin".into()],
             exclude: BTreeSet::new(),
@@ -1575,6 +1625,8 @@ mod tests {
         let html = render_html(&cfg, &feed);
         assert!(html.contains("data-theme=\"bitcoin\""));
         assert!(html.contains("/btc_foss/theme-bitcoin.css"));
+        assert!(html.contains("<span>commits</span>"));
+        assert!(html.contains("<span>pull requests</span>"));
         assert!(html.contains("feed.json"));
         assert!(html.contains("wizardsardine/bhwi"));
     }
