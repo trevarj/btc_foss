@@ -1,0 +1,30 @@
+{
+  "generated_at": "2026-05-15T00:00:00Z",
+  "username": "trevarj",
+  "events": [
+    {
+      "id": "fixture-pr",
+      "event_type": "pull_request",
+      "repo": "wizardsardine/bhwi",
+      "title": "Add descriptor support",
+      "url": "https://github.com/wizardsardine/bhwi/pull/1",
+      "occurred_at": "2026-05-14T12:00:00Z",
+      "thread_id": "wizardsardine/bhwi#1",
+      "thread_title": "Add descriptor support",
+      "thread_url": "https://github.com/wizardsardine/bhwi/pull/1",
+      "status": "OPEN"
+    },
+    {
+      "id": "fixture-review",
+      "event_type": "review",
+      "repo": "rust-bitcoin/rust-miniscript",
+      "title": "Reviewed Improve descriptor parsing",
+      "url": "https://github.com/rust-bitcoin/rust-miniscript/pull/2#pullrequestreview-1",
+      "occurred_at": "2026-05-13T09:00:00Z",
+      "thread_id": "rust-bitcoin/rust-miniscript#2",
+      "thread_title": "Improve descriptor parsing",
+      "thread_url": "https://github.com/rust-bitcoin/rust-miniscript/pull/2",
+      "status": "COMMENTED"
+    }
+  ]
+}

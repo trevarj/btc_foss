@@ -1,0 +1,79 @@
+name: btc-foss-pages
+
+on:
+  workflow_dispatch:
+    inputs:
+      full:
+        description: Run a full recrawl
+        required: false
+        default: "false"
+  schedule:
+    - cron: "21 4 * * *"
+    - cron: "43 5 1 * *"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  issues: write
+
+concurrency:
+  group: btc-foss-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Restore collector cache
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: btc-contribs-${{ github.run_id }}
+          restore-keys: |
+            btc-contribs-
+
+      - name: Build generator
+        run: cargo build --release
+
+      - name: Collect GitHub activity
+        env:
+          GITHUB_TOKEN: ${{ secrets.BTC_CONTRIBS_TOKEN || github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          BTC_CONTRIBS_FULL: ${{ github.event.schedule == '43 5 1 * *' || inputs.full == 'true' }}
+        run: |
+          mkdir -p .cache public
+          FULL_ARG=""
+          if [ "$BTC_CONTRIBS_FULL" = "true" ]; then
+            FULL_ARG="--full"
+          fi
+          ./target/release/btc-contribs collect \
+            --config config/site.toml \
+            --state .cache/feed.json \
+            --out public/feed.json \
+            --candidates .cache/candidates.md \
+            $FULL_ARG
+
+      - name: Render site
+        run: |
+          ./target/release/btc-contribs render \
+            --config config/site.toml \
+            --feed public/feed.json \
+            --out public
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

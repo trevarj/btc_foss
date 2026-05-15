@@ -1,0 +1,24 @@
+username = "trevarj"
+title = "Bitcoin FOSS Contributions"
+base_path = "/btc_foss/"
+site_root = "https://trevs.site"
+bootstrap_months = 5
+
+# Curated repositories are the only repositories published in the public feed.
+# Discovery finds Bitcoin-related candidates from recent public activity and
+# opens/updates a GitHub issue for manual review.
+allowlist = [
+  "bitcoin/bitcoin",
+  "bitcoinfuzz/bitcoinfuzz",
+  "Blockstream/Jade",
+  "BlockstreamResearch/rust-simplicity",
+  "Coldcard/firmware",
+  "fanquake/core-review",
+  "rust-bitcoin/rust-bitcoin",
+  "rust-bitcoin/rust-miniscript",
+  "wizardsardine/async-hwi",
+  "wizardsardine/bhwi",
+]
+
+keywords = ["bitcoin"]
+exclude = []
