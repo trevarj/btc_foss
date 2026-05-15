@@ -949,8 +949,9 @@ fn render_html(config: &Config, feed: &Feed) -> String {
         writeln!(out, "<div class=\"btc-thread-detail\">").unwrap();
         writeln!(
             out,
-            "<p><a href=\"{}\">Open source thread</a></p>",
-            html_attr(&first.thread_url)
+            "<p><a href=\"{}\">{}</a></p>",
+            html_attr(&first.thread_url),
+            html(source_link_label(&first.event_type))
         )
         .unwrap();
         writeln!(out, "<ol>").unwrap();
@@ -1022,6 +1023,17 @@ fn icon(kind: &str) -> &'static str {
         "comment" => "↩",
         "issue" => "!",
         _ => "•",
+    }
+}
+
+fn source_link_label(kind: &str) -> &'static str {
+    match kind {
+        "pull_request" => "View pull request",
+        "review" => "View reviewed pull request",
+        "commit" => "View commits",
+        "comment" => "View comment thread",
+        "issue" => "View issue",
+        _ => "View source",
     }
 }
 
