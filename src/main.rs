@@ -948,10 +948,11 @@ fn render_html(config: &Config, feed: &Feed) -> String {
             html(&row_kind.replace('_', " "))
         ).unwrap();
         writeln!(out, "<div class=\"btc-thread-detail\">").unwrap();
-        writeln!(out, "<ol>").unwrap();
+        writeln!(out, "<ul>").unwrap();
         for event in group {
-            writeln!(out, "<li data-type=\"{}\"><time datetime=\"{}\">{}</time> <span class=\"btc-kind\">{}</span> <a href=\"{}\">{}</a>{}</li>",
+            writeln!(out, "<li data-type=\"{}\"><span class=\"btc-detail-icon\">{}</span><time datetime=\"{}\">{}</time> <span class=\"btc-kind\">{}</span> <a href=\"{}\">{}</a>{}</li>",
                 html_attr(&event.event_type),
+                icon(&event.event_type),
                 html_attr(&event.occurred_at),
                 html(&short_date(&event.occurred_at)),
                 html(&event.event_type.replace('_', " ")),
@@ -959,7 +960,7 @@ fn render_html(config: &Config, feed: &Feed) -> String {
                 html(&event.title),
                 status_badge(&event.status)).unwrap();
         }
-        writeln!(out, "</ol></div></details>").unwrap();
+        writeln!(out, "</ul></div></details>").unwrap();
     }
     writeln!(out, "</div></main><footer><p>Trevor Arjeski - <a href=\"https://github.com/trevarj\">git</a> <a href=\"/rss.xml\">rss</a></p></footer>").unwrap();
     writeln!(
@@ -1137,8 +1138,9 @@ fn render_css() -> &'static str {
 .btc-row-kind { display: inline-flex; justify-content: center; inline-size: 100%; color: var(--text-light); border: 1px solid var(--border-soft); border-radius: var(--standard-border-radius); padding: 0.03rem 0.32rem; font-size: 0.76rem; font-weight: normal; white-space: nowrap; text-transform: uppercase; }
 .btc-icon { display: inline-grid; place-items: center; width: 1.35rem; height: 1.35rem; border: 1px solid var(--accent); border-radius: 50%; color: var(--accent-text); background: var(--accent); text-shadow: none; box-shadow: 0 0 0.65rem rgba(247, 147, 26, 0.28); }
 .btc-thread-detail { margin-top: 0.45rem; padding-top: 0.45rem; border-top: 1px solid var(--border-soft); }
-.btc-thread ol { margin: 0.45rem 0 0 1.75rem; padding-left: 1rem; }
-.btc-thread li { margin: 0.28rem 0; }
+.btc-thread ul { margin: 0.45rem 0 0 1.75rem; padding-left: 0; list-style: none; }
+.btc-thread li { display: grid; grid-template-columns: 1.25rem auto auto minmax(0, 1fr) auto; gap: 0.38rem; align-items: center; margin: 0.28rem 0; }
+.btc-detail-icon { display: inline-grid; place-items: center; width: 1rem; height: 1rem; color: var(--accent-hover); }
 .btc-thread time, .btc-kind, .btc-status { color: var(--text-light); font-size: 0.78rem; }
 .btc-kind, .btc-status { border: 1px solid var(--border-soft); border-radius: var(--standard-border-radius); padding: 0.03rem 0.28rem; }
 @media only screen and (max-width: 720px) {
