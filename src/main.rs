@@ -135,12 +135,14 @@ fn render_cmd(args: &[String]) -> Result<()> {
     let feed = Feed::from_json_file(Path::new(&feed_path))?;
     let out = PathBuf::from(out_dir);
     fs::create_dir_all(&out).map_err(|e| e.to_string())?;
-    fs::write(out.join("index.html"), render_html(&config, &feed)).map_err(|e| e.to_string())?;
+    let html = render_html(&config, &feed);
+    fs::write(out.join("index.html"), &html).map_err(|e| e.to_string())?;
     fs::write(out.join("btc_foss.css"), render_css()).map_err(|e| e.to_string())?;
     fs::write(out.join("btc_foss.js"), render_js()).map_err(|e| e.to_string())?;
     if !out.join("feed.json").exists() {
         fs::write(out.join("feed.json"), feed.to_json()).map_err(|e| e.to_string())?;
     }
+    write_local_preview_files(&out, &config, &feed, &html)?;
     Ok(())
 }
 
@@ -153,6 +155,27 @@ fn validate_cmd(args: &[String]) -> Result<()> {
     if !config.base_path.starts_with('/') || !config.base_path.ends_with('/') {
         return Err("base_path must start and end with '/'".into());
     }
+    Ok(())
+}
+
+fn write_local_preview_files(out: &Path, config: &Config, feed: &Feed, html: &str) -> Result<()> {
+    let base_dir_name = config.base_path.trim_matches('/');
+    if !base_dir_name.is_empty() {
+        let base_dir = out.join(base_dir_name);
+        fs::create_dir_all(&base_dir).map_err(|e| e.to_string())?;
+        fs::write(base_dir.join("index.html"), html).map_err(|e| e.to_string())?;
+        fs::write(base_dir.join("btc_foss.css"), render_css()).map_err(|e| e.to_string())?;
+        fs::write(base_dir.join("btc_foss.js"), render_js()).map_err(|e| e.to_string())?;
+        fs::write(base_dir.join("feed.json"), feed.to_json()).map_err(|e| e.to_string())?;
+    }
+
+    let static_dir = out.join("static");
+    fs::create_dir_all(&static_dir).map_err(|e| e.to_string())?;
+    fs::write(
+        static_dir.join("style.css"),
+        "@import url(\"https://trevs.site/static/style.css\");\n",
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 

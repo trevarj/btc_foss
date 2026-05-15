@@ -1,4 +1,5 @@
 (specifications->manifest
  (list "rust"
        "curl"
-       "git"))
+       "git"
+       "python"))
