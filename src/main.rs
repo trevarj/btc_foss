@@ -102,9 +102,13 @@ fn collect_cmd(args: &[String]) -> Result<()> {
 
     let from = months_ago_rfc3339(config.bootstrap_months);
     let to = now_rfc3339();
-    let graph = fetch_contributions(&token, &config.username, &from, &to)?;
-    let (events, candidates) = extract_contributions(&config, &graph)?;
-    merge_events(&mut feed.events, events);
+    let mut candidates = BTreeSet::new();
+    for (window_from, window_to) in contribution_windows(config.bootstrap_months, &to) {
+        let graph = fetch_contributions(&token, &config.username, &window_from, &window_to)?;
+        let (events, found_candidates) = extract_contributions(&config, &graph)?;
+        merge_events(&mut feed.events, events);
+        candidates.extend(found_candidates);
+    }
     let comments = fetch_comment_events(&token, &config, &from)?;
     merge_events(&mut feed.events, comments);
     prune_events_before(&mut feed.events, &from);
@@ -680,6 +684,25 @@ fn merge_events(existing: &mut Vec<Event>, incoming: Vec<Event>) {
 
 fn prune_events_before(events: &mut Vec<Event>, from: &str) {
     events.retain(|event| event.occurred_at.as_str() >= from);
+}
+
+fn contribution_windows(months: i64, to: &str) -> Vec<(String, String)> {
+    let months = months.max(1);
+    let step = 6;
+    let mut windows = Vec::new();
+    let mut end_offset = 0;
+    while end_offset < months {
+        let start_offset = (end_offset + step).min(months);
+        let start = months_ago_rfc3339(start_offset);
+        let end = if end_offset == 0 {
+            to.to_string()
+        } else {
+            months_ago_rfc3339(end_offset)
+        };
+        windows.push((start, end));
+        end_offset = start_offset;
+    }
+    windows
 }
 
 fn candidate_report(config: &Config, candidates: &BTreeSet<String>) -> String {
@@ -1620,6 +1643,14 @@ mod tests {
     }
 
     #[test]
+    fn splits_long_collection_windows() {
+        let windows = contribution_windows(24, "2026-05-15T00:00:00Z");
+        assert_eq!(windows.len(), 4);
+        assert_eq!(windows[0].1, "2026-05-15T00:00:00Z");
+        assert!(windows.iter().all(|(start, end)| start < end));
+    }
+
+    #[test]
     fn prunes_events_before_collection_window() {
         let mut events = vec![
             Event {
@@ -1674,7 +1705,7 @@ mod tests {
             title: "Bitcoin FOSS Contributions".into(),
             base_path: "/btc_foss/".into(),
             site_root: "https://trevs.site".into(),
-            bootstrap_months: 12,
+            bootstrap_months: 24,
             allowlist: BTreeSet::new(),
             keywords: vec!["bitcoin".into()],
             exclude: BTreeSet::new(),
