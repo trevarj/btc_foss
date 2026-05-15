@@ -405,7 +405,7 @@ fn extract_contributions(config: &Config, graph: &Json) -> Result<(Vec<Event>, B
                 .and_then(Json::array)
                 .unwrap_or(&[])
             {
-                if let Some(event) = event_from_node(kind, repo, node) {
+                if let Some(event) = event_from_node(kind, repo, node, &config.username) {
                     events.push(event);
                 }
             }
@@ -414,7 +414,7 @@ fn extract_contributions(config: &Config, graph: &Json) -> Result<(Vec<Event>, B
     Ok((events, candidates))
 }
 
-fn event_from_node(kind: &str, repo: &str, node: &Json) -> Option<Event> {
+fn event_from_node(kind: &str, repo: &str, node: &Json, username: &str) -> Option<Event> {
     match kind {
         "pull_request" => {
             let pr = node.get("pullRequest")?;
@@ -464,20 +464,20 @@ fn event_from_node(kind: &str, repo: &str, node: &Json) -> Option<Event> {
                 .get("commitCount")
                 .and_then(Json::number)
                 .unwrap_or(1.0) as i64;
-            let url = node
-                .get("url")
-                .and_then(Json::string)
-                .unwrap_or("")
-                .to_string();
+            let url = commit_day_url(repo, username, &date);
+            let title = format!(
+                "{count} commit{} to {repo}",
+                if count == 1 { "" } else { "s" }
+            );
             Some(Event {
                 id: format!("{repo}:commit:{date}:{count}"),
                 event_type: kind.into(),
                 repo: repo.into(),
-                title: format!("{count} commit{}", if count == 1 { "" } else { "s" }),
+                title: title.clone(),
                 url: url.clone(),
                 occurred_at: date.clone(),
                 thread_id: format!("{repo}:commits:{date}"),
-                thread_title: "Commits".into(),
+                thread_title: title,
                 thread_url: url,
                 status: String::new(),
             })
@@ -508,6 +508,11 @@ fn event_from_node(kind: &str, repo: &str, node: &Json) -> Option<Event> {
         }
         _ => None,
     }
+}
+
+fn commit_day_url(repo: &str, username: &str, occurred_at: &str) -> String {
+    let day = occurred_at.get(0..10).unwrap_or(occurred_at);
+    format!("https://github.com/{repo}/commits?author={username}&since={day}T00:00:00Z&until={day}T23:59:59Z")
 }
 
 fn fetch_comment_events(token: &str, config: &Config, from: &str) -> Result<Vec<Event>> {
@@ -919,13 +924,29 @@ fn render_html(config: &Config, feed: &Feed) -> String {
         let year = first.occurred_at.get(0..4).unwrap_or("");
         writeln!(
             out,
-            "<details class=\"btc-thread\" open data-repo=\"{}\" data-type=\"{}\" data-year=\"{}\">",
+            "<details class=\"btc-thread\" data-repo=\"{}\" data-type=\"{}\" data-year=\"{}\">",
             html_attr(&first.repo),
             html_attr(&first.event_type),
             html_attr(year)
+        )
+        .unwrap();
+        writeln!(out, "<summary><span class=\"btc-icon\">{}</span><span class=\"btc-row-main\"><span class=\"btc-row-title\">{}</span><small><time datetime=\"{}\">{}</time> · {} · {} item{}</small></span><span class=\"btc-row-kind\">{}</span></summary>",
+            icon(&first.event_type),
+            html(&first.thread_title),
+            html_attr(&first.occurred_at),
+            html(&short_date(&first.occurred_at)),
+            html(&first.repo),
+            group.len(),
+            if group.len() == 1 { "" } else { "s" },
+            html(&first.event_type.replace('_', " "))
         ).unwrap();
-        writeln!(out, "<summary><span class=\"btc-icon\">{}</span><span><a href=\"{}\">{}</a><small>{} · {} item{}</small></span></summary>",
-            icon(&first.event_type), html_attr(&first.thread_url), html(&first.thread_title), html(&first.repo), group.len(), if group.len() == 1 { "" } else { "s" }).unwrap();
+        writeln!(out, "<div class=\"btc-thread-detail\">").unwrap();
+        writeln!(
+            out,
+            "<p><a href=\"{}\">Open source thread</a></p>",
+            html_attr(&first.thread_url)
+        )
+        .unwrap();
         writeln!(out, "<ol>").unwrap();
         for event in group {
             writeln!(out, "<li data-type=\"{}\"><time datetime=\"{}\">{}</time> <span class=\"btc-kind\">{}</span> <a href=\"{}\">{}</a>{}</li>",
@@ -937,7 +958,7 @@ fn render_html(config: &Config, feed: &Feed) -> String {
                 html(&event.title),
                 status_badge(&event.status)).unwrap();
         }
-        writeln!(out, "</ol></details>").unwrap();
+        writeln!(out, "</ol></div></details>").unwrap();
     }
     writeln!(out, "</div></main><footer><p>Trevor Arjeski - <a href=\"https://github.com/trevarj\">git</a> <a href=\"/rss.xml\">rss</a></p></footer>").unwrap();
     writeln!(
@@ -1068,19 +1089,26 @@ fn render_css() -> &'static str {
 .btc-filters label { font-size: 0.78rem; text-transform: uppercase; }
 .btc-filters select { width: 100%; margin: 0.2rem 0 0; }
 .btc-reset { align-self: center; white-space: nowrap; }
-.btc-timeline { position: relative; }
-.btc-thread { margin-bottom: 0.65rem; }
+.btc-timeline { position: relative; display: grid; gap: 0.35rem; }
+.btc-thread { margin: 0; border-color: var(--border-soft); }
 .btc-thread[hidden] { display: none; }
-.btc-thread summary { display: grid; grid-template-columns: 1.8rem 1fr; gap: 0.45rem; align-items: start; word-break: normal; }
+.btc-thread summary { display: grid; grid-template-columns: 1.8rem minmax(0, 1fr) auto; gap: 0.55rem; align-items: center; min-block-size: 2.7rem; word-break: normal; }
+.btc-thread summary::marker { color: var(--accent-hover); }
 .btc-thread summary small { display: block; margin-top: 0.12rem; color: var(--text-light); font-weight: normal; }
+.btc-row-main { min-width: 0; }
+.btc-row-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--heading-color); }
+.btc-row-kind { color: var(--text-light); border: 1px solid var(--border-soft); border-radius: var(--standard-border-radius); padding: 0.03rem 0.32rem; font-size: 0.76rem; font-weight: normal; white-space: nowrap; text-transform: uppercase; }
 .btc-icon { display: inline-grid; place-items: center; width: 1.35rem; height: 1.35rem; border: 1px solid var(--accent); border-radius: 50%; color: var(--accent-text); background: var(--accent); text-shadow: none; box-shadow: 0 0 0.65rem rgba(247, 147, 26, 0.28); }
+.btc-thread-detail { margin-top: 0.45rem; padding-top: 0.45rem; border-top: 1px solid var(--border-soft); }
+.btc-thread-detail p { margin: 0 0 0.45rem 1.75rem; }
 .btc-thread ol { margin: 0.45rem 0 0 1.75rem; padding-left: 1rem; }
 .btc-thread li { margin: 0.28rem 0; }
 .btc-thread time, .btc-kind, .btc-status { color: var(--text-light); font-size: 0.78rem; }
 .btc-kind, .btc-status { border: 1px solid var(--border-soft); border-radius: var(--standard-border-radius); padding: 0.03rem 0.28rem; }
 @media only screen and (max-width: 720px) {
   .btc-filters { grid-template-columns: 1fr; }
-  .btc-thread summary { grid-template-columns: 1.5rem 1fr; }
+  .btc-thread summary { grid-template-columns: 1.5rem minmax(0, 1fr); }
+  .btc-row-kind { grid-column: 2; justify-self: start; }
 }
 "#
 }
@@ -1414,7 +1442,11 @@ mod tests {
     #[test]
     fn feed_round_trip_fixture() {
         let feed = Feed::from_json_file(Path::new("fixtures/feed.json")).unwrap();
-        assert_eq!(feed.events.len(), 2);
+        assert!(feed.events.len() >= 3);
+        assert!(feed
+            .events
+            .iter()
+            .any(|event| event.event_type == "commit" && event.url.contains("/commits?author=")));
         let reparsed = parse_json(&feed.to_json()).unwrap();
         assert_eq!(
             reparsed.get("username").and_then(Json::string),
