@@ -137,6 +137,8 @@ fn render_cmd(args: &[String]) -> Result<()> {
     fs::create_dir_all(&out).map_err(|e| e.to_string())?;
     let html = render_html(&config, &feed);
     fs::write(out.join("index.html"), &html).map_err(|e| e.to_string())?;
+    fs::write(out.join("theme-bitcoin.css"), render_bitcoin_theme_css())
+        .map_err(|e| e.to_string())?;
     fs::write(out.join("btc_foss.css"), render_css()).map_err(|e| e.to_string())?;
     fs::write(out.join("btc_foss.js"), render_js()).map_err(|e| e.to_string())?;
     if !out.join("feed.json").exists() {
@@ -164,6 +166,11 @@ fn write_local_preview_files(out: &Path, config: &Config, feed: &Feed, html: &st
         let base_dir = out.join(base_dir_name);
         fs::create_dir_all(&base_dir).map_err(|e| e.to_string())?;
         fs::write(base_dir.join("index.html"), html).map_err(|e| e.to_string())?;
+        fs::write(
+            base_dir.join("theme-bitcoin.css"),
+            render_bitcoin_theme_css(),
+        )
+        .map_err(|e| e.to_string())?;
         fs::write(base_dir.join("btc_foss.css"), render_css()).map_err(|e| e.to_string())?;
         fs::write(base_dir.join("btc_foss.js"), render_js()).map_err(|e| e.to_string())?;
         fs::write(base_dir.join("feed.json"), feed.to_json()).map_err(|e| e.to_string())?;
@@ -867,7 +874,11 @@ fn render_html(config: &Config, feed: &Feed) -> String {
 
     let mut out = String::new();
     writeln!(out, "<!DOCTYPE html>").unwrap();
-    writeln!(out, "<html lang=\"en\"><head><meta charset=\"UTF-8\">").unwrap();
+    writeln!(
+        out,
+        "<html lang=\"en\" data-theme=\"bitcoin\"><head><meta charset=\"UTF-8\">"
+    )
+    .unwrap();
     writeln!(
         out,
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
@@ -879,6 +890,12 @@ fn render_html(config: &Config, feed: &Feed) -> String {
     )
     .unwrap();
     writeln!(out, "<link rel=\"stylesheet\" href=\"/static/style.css\">").unwrap();
+    writeln!(
+        out,
+        "<link rel=\"stylesheet\" href=\"{}theme-bitcoin.css\">",
+        html_attr(&config.base_path)
+    )
+    .unwrap();
     writeln!(
         out,
         "<link rel=\"stylesheet\" href=\"{}btc_foss.css\">",
@@ -1063,46 +1080,95 @@ fn bitcoin_logo_svg() -> &'static str {
     r#"<img class="btc-logo" src="https://upload.wikimedia.org/wikipedia/commons/4/46/Bitcoin.svg" alt="Bitcoin">"#
 }
 
-fn render_css() -> &'static str {
-    r#":root {
-  --bg: #120903;
-  --bg-deep: #070301;
-  --accent-bg: #211005;
-  --panel-bg: rgba(35, 16, 4, 0.9);
-  --panel-bg-strong: rgba(48, 22, 5, 0.95);
-  --text: #ffd7a3;
-  --text-light: #e09a45;
-  --text-muted: #a96820;
-  --border: #b76312;
+fn render_bitcoin_theme_css() -> &'static str {
+    r#"html[data-theme="bitcoin"],
+html[data-theme="bitcoin"]::backdrop {
+  color-scheme: dark;
+  --bg: #0c0f14;
+  --bg-deep: #05070a;
+  --accent-bg: #141017;
+  --panel-bg: rgba(18, 22, 29, 0.9);
+  --panel-bg-strong: rgba(29, 25, 24, 0.95);
+  --text: #f4e7cf;
+  --text-light: #c9a875;
+  --text-muted: #8b7558;
+  --border: #7f5a24;
   --border-soft: rgba(247, 147, 26, 0.28);
   --accent: #f7931a;
-  --accent-hover: #ffb650;
-  --accent-text: #160800;
-  --code: #ffe0b8;
-  --preformatted: #ffc477;
+  --accent-hover: #ffbf5f;
+  --accent-text: #120900;
+  --code: #ffd28a;
+  --preformatted: #d8b06f;
   --marked: #f7931a;
-  --heading-color: #ffbd66;
-  --link-decoration: rgba(247, 147, 26, 0.72);
-  --link-hover-shadow: 0 0 0.9rem rgba(247, 147, 26, 0.42);
-  --body-bg-start: #1a0b02;
-  --body-bg-mid: #120903;
-  --body-bg-end: #070301;
-  --body-ambient-top: rgba(247, 147, 26, 0.13);
-  --body-ambient-bottom: rgba(247, 147, 26, 0.08);
-  --body-grain-line: rgba(247, 147, 26, 0.016);
-  --header-veil-top: rgba(247, 147, 26, 0.11);
-  --header-veil-bottom: rgba(247, 147, 26, 0.035);
-  --header-shadow: rgba(247, 147, 26, 0.12);
-  --footer-divider: rgba(247, 147, 26, 0.58);
-  --button-top: #ffb650;
+  --disabled: #352717;
+  --selection-text: #fff2db;
+  --selection-bg: rgba(247, 147, 26, 0.32);
+  --body-bg-start: #121922;
+  --body-bg-mid: #0c0f14;
+  --body-bg-end: #05070a;
+  --body-ambient-top: rgba(247, 147, 26, 0.11);
+  --body-ambient-bottom: rgba(55, 132, 122, 0.08);
+  --body-grain-line: rgba(247, 147, 26, 0.014);
+  --scanline-dark: rgba(0, 0, 0, 0.2);
+  --scanline-bright: rgba(247, 147, 26, 0.026);
+  --scanline-sweep-a: rgba(247, 147, 26, 0.016);
+  --scanline-sweep-b: rgba(55, 132, 122, 0.008);
+  --scanline-sweep-c: rgba(0, 0, 0, 0.1);
+  --header-veil-top: rgba(247, 147, 26, 0.1);
+  --header-veil-bottom: rgba(55, 132, 122, 0.025);
+  --header-shadow: rgba(247, 147, 26, 0.09);
+  --header-divider-soft: rgba(247, 147, 26, 0.22);
+  --header-divider-core: rgba(55, 132, 122, 0.2);
+  --main-vignette: rgba(247, 147, 26, 0.08);
+  --footer-divider: rgba(247, 147, 26, 0.5);
+  --heading-color: #ffd08a;
+  --link-decoration: rgba(247, 147, 26, 0.68);
+  --link-hover-shadow: 0 0 0.85rem rgba(247, 147, 26, 0.34);
+  --link-focus-inner: 0 0 0 2px rgba(55, 132, 122, 0.32);
+  --link-focus-outer: 0 0 0.95rem rgba(247, 147, 26, 0.48);
+  --button-top: #ffbd59;
   --button-bottom: #f7931a;
-  --button-hover-shadow: 0 0 1.25rem rgba(247, 147, 26, 0.48);
-  --crt-glow: 0 0 0.16rem rgba(247, 147, 26, 0.28),
-    0 0 0.8rem rgba(247, 147, 26, 0.14);
-  --crt-glow-strong: 0 0 0.22rem rgba(255, 190, 98, 0.66),
-    0 0 1.1rem rgba(247, 147, 26, 0.36);
+  --button-hover-shadow: 0 0 1.15rem rgba(247, 147, 26, 0.42);
+  --button-focus-shadow: 0 0 0.95rem rgba(55, 132, 122, 0.45);
+  --select-overlay-top: rgba(247, 147, 26, 0.08);
+  --select-overlay-bottom: rgba(55, 132, 122, 0.018);
+  --select-surface: rgba(12, 15, 20, 0.68);
+  --select-border: rgba(247, 147, 26, 0.64);
+  --select-focus: 0 0 0 2px rgba(55, 132, 122, 0.22),
+    0 0 0.7rem rgba(247, 147, 26, 0.4);
+  --link-glow: 0 0 0.16rem rgba(255, 180, 80, 0.54),
+    0 0 0.38rem rgba(247, 147, 26, 0.34),
+    0 0 0.62rem rgba(55, 132, 122, 0.2);
+  --link-glow-strong: 0 0 0.22rem rgba(255, 205, 115, 0.82),
+    0 0 0.56rem rgba(247, 147, 26, 0.58),
+    0 0 1.05rem rgba(55, 132, 122, 0.28);
+  --crt-glow: 0 0 0.16rem rgba(247, 147, 26, 0.22),
+    0 0 0.75rem rgba(55, 132, 122, 0.09);
+  --crt-glow-strong: 0 0 0.22rem rgba(255, 190, 98, 0.62),
+    0 0 1.05rem rgba(247, 147, 26, 0.28);
+  --crt-panel-shadow: inset 0 0 0 1px rgba(247, 147, 26, 0.12),
+    0 0 1.1rem rgba(55, 132, 122, 0.08);
+  --grain-strength: 0.066;
+  --grain-size: 112px;
+  --grain-animation-speed: 2.8s;
+  --grain-contrast: 310%;
+  --snow-layers: none;
+  --snow-size: auto;
+  --snow-position: 0 0;
+  --snow-position-end: 0 0;
+  --snow-opacity: 0;
+  --snow-animation: none;
+
+  --btc-profit: #63d39a;
+  --btc-cyan: #3a9e92;
+  --btc-warning: #ffbf5f;
+  --btc-danger: #d86b5f;
 }
-.btc-page { padding-top: var(--space-lg); }
+"#
+}
+
+fn render_css() -> &'static str {
+    r#".btc-page { padding-top: var(--space-lg); }
 .btc-page h1 {
   display: flex;
   align-items: center;
@@ -1507,6 +1573,8 @@ mod tests {
         };
         let feed = Feed::from_json_file(Path::new("fixtures/feed.json")).unwrap();
         let html = render_html(&cfg, &feed);
+        assert!(html.contains("data-theme=\"bitcoin\""));
+        assert!(html.contains("/btc_foss/theme-bitcoin.css"));
         assert!(html.contains("feed.json"));
         assert!(html.contains("wizardsardine/bhwi"));
     }
