@@ -1248,10 +1248,14 @@ fn render_js() -> &'static str {
     const type = data.get("type");
     const year = data.get("year");
     for (const item of items) {
+      const detailRows = Array.from(item.querySelectorAll("[data-type]"));
       const ok = (!repo || item.dataset.repo === repo) &&
-        (!type || item.dataset.type === type || item.querySelector(`[data-type="${CSS.escape(type)}"]`)) &&
+        (!type || item.dataset.type === type || detailRows.some((row) => row.dataset.type === type)) &&
         (!year || item.dataset.year === year);
       item.hidden = !ok;
+      for (const row of detailRows) {
+        row.hidden = Boolean(type && row.dataset.type !== type);
+      }
     }
   }
   form.addEventListener("change", apply);
