@@ -939,14 +939,12 @@ fn render_html(config: &Config, feed: &Feed) -> String {
             html_attr(year)
         )
         .unwrap();
-        writeln!(out, "<summary><span class=\"btc-icon\">{}</span>{}<span class=\"btc-row-repo\">{}</span><time class=\"btc-row-date\" datetime=\"{}\">{}</time><span class=\"btc-row-count\">{} item{}</span><span class=\"btc-row-kind\">{}</span></summary>",
+        writeln!(out, "<summary><span class=\"btc-icon\">{}</span>{}<span class=\"btc-row-repo\">{}</span><time class=\"btc-row-date\" datetime=\"{}\">{}</time><span class=\"btc-row-kind\">{}</span></summary>",
             icon(&row_kind),
             row_title_cell(&group, &row_title),
             html(&first.repo),
             html_attr(&first.occurred_at),
             html(&short_date(&first.occurred_at)),
-            group.len(),
-            if group.len() == 1 { "" } else { "s" },
             html(&row_kind.replace('_', " "))
         ).unwrap();
         writeln!(out, "<div class=\"btc-thread-detail\">").unwrap();
@@ -1130,12 +1128,12 @@ fn render_css() -> &'static str {
 .btc-timeline { position: relative; display: grid; gap: 0.35rem; }
 .btc-thread { margin: 0; border-color: var(--border-soft); }
 .btc-thread[hidden] { display: none; }
-.btc-thread summary { display: grid; grid-template-columns: 1.8rem minmax(10rem, 1fr) minmax(9rem, 0.65fr) 6.2rem 4.6rem 7.8rem; gap: 0.55rem; align-items: center; min-block-size: 2.25rem; word-break: normal; }
+.btc-thread summary { display: grid; grid-template-columns: 1.8rem minmax(10rem, 1fr) minmax(9rem, 0.65fr) 6.2rem 7.8rem; gap: 0.55rem; align-items: center; min-block-size: 2.25rem; word-break: normal; }
 .btc-thread summary::marker { color: var(--accent-hover); }
 .btc-row-title { display: inline-flex; align-items: center; gap: 0.3rem; min-width: 0; overflow: hidden; white-space: nowrap; color: var(--heading-color); }
 .btc-row-title > :is(a, .btc-row-title-text):first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .btc-row-repo { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-light); font-size: 0.78rem; font-weight: normal; }
-.btc-row-date, .btc-row-count { color: var(--text-light); font-size: 0.78rem; font-weight: normal; font-variant-numeric: tabular-nums; text-align: end; white-space: nowrap; }
+.btc-row-date { color: var(--text-light); font-size: 0.78rem; font-weight: normal; font-variant-numeric: tabular-nums; text-align: end; white-space: nowrap; }
 .btc-row-kind { display: inline-flex; justify-content: center; inline-size: 100%; color: var(--text-light); border: 1px solid var(--border-soft); border-radius: var(--standard-border-radius); padding: 0.03rem 0.32rem; font-size: 0.76rem; font-weight: normal; white-space: nowrap; text-transform: uppercase; }
 .btc-icon { display: inline-grid; place-items: center; width: 1.35rem; height: 1.35rem; border: 1px solid var(--accent); border-radius: 50%; color: var(--accent-text); background: var(--accent); text-shadow: none; box-shadow: 0 0 0.65rem rgba(247, 147, 26, 0.28); }
 .btc-thread-detail { margin-top: 0.45rem; padding-top: 0.45rem; border-top: 1px solid var(--border-soft); }
@@ -1147,7 +1145,6 @@ fn render_css() -> &'static str {
   .btc-filters { grid-template-columns: 1fr; }
   .btc-thread summary { grid-template-columns: 1.5rem minmax(0, 1fr) auto; gap: 0.4rem; }
   .btc-row-repo { grid-column: 2; }
-  .btc-row-count { display: none; }
   .btc-row-kind { display: none; }
 }
 "#
