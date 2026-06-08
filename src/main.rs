@@ -1086,8 +1086,46 @@ fn group_title(group: &[&Event]) -> String {
     if group.len() == 1 {
         group[0].thread_title.clone()
     } else {
-        format!("{} activities", group.len())
+        group_activity_summary(group)
     }
+}
+
+fn group_activity_summary(group: &[&Event]) -> String {
+    let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+    for event in group {
+        *counts.entry(event.event_type.as_str()).or_default() += 1;
+    }
+
+    let mut summary = Vec::new();
+    for kind in activity_summary_order() {
+        if let Some(count) = counts.remove(kind) {
+            summary.push(event_type_group_label(kind, count));
+        }
+    }
+    for (kind, count) in counts {
+        summary.push(event_type_group_label(kind, count));
+    }
+    summary.join(", ")
+}
+
+fn activity_summary_order() -> [&'static str; 5] {
+    ["pull_request", "review", "commit", "comment", "issue"]
+}
+
+fn event_type_group_label(kind: &str, count: usize) -> String {
+    match kind {
+        "pull_request" => plural(count, "PR", "PRs"),
+        "review" => plural(count, "review", "reviews"),
+        "commit" => plural(count, "commit", "commits"),
+        "comment" => plural(count, "comment", "comments"),
+        "issue" => plural(count, "issue", "issues"),
+        _ => format!("{count} {}", kind.replace('_', " ")),
+    }
+}
+
+fn plural(count: usize, singular: &str, plural: &str) -> String {
+    let label = if count == 1 { singular } else { plural };
+    format!("{count} {label}")
 }
 
 fn row_title_cell(group: &[&Event], title: &str) -> String {
@@ -1684,6 +1722,62 @@ mod tests {
     }
 
     #[test]
+    fn summarizes_grouped_activity_by_type() {
+        let events = vec![
+            Event {
+                id: "pr-1".into(),
+                event_type: "pull_request".into(),
+                repo: "bitcoin/bitcoin".into(),
+                title: "pr".into(),
+                url: "u".into(),
+                occurred_at: "2026-01-01T12:00:00Z".into(),
+                thread_id: "t1".into(),
+                thread_title: "pr".into(),
+                thread_url: "u".into(),
+                status: String::new(),
+            },
+            Event {
+                id: "comment-1".into(),
+                event_type: "comment".into(),
+                repo: "bitcoin/bitcoin".into(),
+                title: "comment".into(),
+                url: "u".into(),
+                occurred_at: "2026-01-01T11:00:00Z".into(),
+                thread_id: "t2".into(),
+                thread_title: "comment".into(),
+                thread_url: "u".into(),
+                status: String::new(),
+            },
+            Event {
+                id: "comment-2".into(),
+                event_type: "comment".into(),
+                repo: "bitcoin/bitcoin".into(),
+                title: "comment".into(),
+                url: "u".into(),
+                occurred_at: "2026-01-01T10:00:00Z".into(),
+                thread_id: "t3".into(),
+                thread_title: "comment".into(),
+                thread_url: "u".into(),
+                status: String::new(),
+            },
+            Event {
+                id: "issue-1".into(),
+                event_type: "issue".into(),
+                repo: "bitcoin/bitcoin".into(),
+                title: "issue".into(),
+                url: "u".into(),
+                occurred_at: "2026-01-01T09:00:00Z".into(),
+                thread_id: "t4".into(),
+                thread_title: "issue".into(),
+                thread_url: "u".into(),
+                status: String::new(),
+            },
+        ];
+        let group = events.iter().collect::<Vec<_>>();
+        assert_eq!(group_title(&group), "1 PR, 2 comments, 1 issue");
+    }
+
+    #[test]
     fn feed_round_trip_fixture() {
         let feed = Feed::from_json_file(Path::new("fixtures/feed.json")).unwrap();
         assert!(feed.events.len() >= 3);
@@ -1718,5 +1812,6 @@ mod tests {
         assert!(html.contains("<span>pull requests</span>"));
         assert!(html.contains("feed.json"));
         assert!(html.contains("wizardsardine/bhwi"));
+        assert!(html.contains("1 PR, 1 commit"));
     }
 }
