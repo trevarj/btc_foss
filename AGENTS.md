@@ -11,6 +11,30 @@
 - The intended contribution window is the last 24 months. `--full` should rebuild that configured window from scratch, not scan all history.
 - Collection windows longer than one year must be split before calling GitHub `contributionsCollection`; GitHub rejects spans over one year.
 
+## Curation
+
+- Candidate repositories are listed as a checklist on the "Bitcoin FOSS repository
+  candidates" issue (label `btc-foss-candidates`). Tick `- [x]` next to a repo to
+  approve it.
+- `collect` regenerates the issue body but preserves existing `- [x]` checkmarks, so
+  approvals survive the daily CI rewrite.
+- `curate` reads the checked items and adds them to `config/site.toml` `allowlist`,
+  preserving existing entry order and appending new repos at the end. It only adds
+  lines; it never reorders or removes existing entries.
+- The `curate` workflow (`.github/workflows/curate.yml`) runs daily (05:57, after the
+  pages collect) and on manual dispatch, and commits the allowlist change to `main` as
+  the `github-actions[bot]` user when anything is checked.
+- To curate locally (e.g. as an agent) without CI:
+
+```sh
+guix shell -L /home/trev/Workspace/dotfiles github-cli -- \
+  gh issue view 4 -R trevarj/btc_foss --json body -q .body > /tmp/cand-body.json
+guix shell -m manifest.scm -- \
+  cargo run -q -- curate --config config/site.toml --body-file /tmp/cand-body.json --dry-run
+```
+
+Drop `--dry-run` to write `config/site.toml`, then commit.
+
 ## Environment
 
 - User runs GNU Guix System. Do not use `guix install`.
