@@ -15,15 +15,7 @@
 
 - User runs GNU Guix System. Do not use `guix install`.
 - Prefer `guix shell <packages> -- <command>` for missing tools.
-- The repo has a read-only `.git` mount. Use the real git dir explicitly:
-
-```sh
-git --git-dir=.repo.git --work-tree=. status --short
-git --git-dir=.repo.git --work-tree=. diff
-git --git-dir=.repo.git --work-tree=. add <files>
-git --git-dir=.repo.git --work-tree=. commit -m "type: message"
-git --git-dir=.repo.git --work-tree=. push
-```
+- Git works natively (`git status`, `git commit`, `git push`); no `--git-dir`/`--work-tree` needed.
 
 - Use Conventional Commits for commit messages.
 - Do not push, create repos, or trigger deployments unless the user explicitly confirms.
