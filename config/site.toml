@@ -21,6 +21,7 @@ allowlist = [
   "wizardsardine/async-hwi",
   "wizardsardine/bhwi",
   "wizardsardine/bhwi-ffi",
+  "trevarj/btc_foss",
 ]
 
 keywords = ["bitcoin"]
