@@ -5,8 +5,9 @@ site_root = "https://trevs.site"
 bootstrap_months = 24
 
 # Curated repositories are the only repositories published in the public feed.
-# Discovery finds Bitcoin-related candidates from recent public activity and
-# opens/updates a GitHub issue for manual review.
+# Discovery finds Bitcoin-related candidates from recent public activity and lists
+# them on the "Bitcoin FOSS repository candidates" issue. Tick `- [x]` on that issue
+# to approve a repo; the `curate` command/workflow adds checked repos here.
 allowlist = [
   "bitcoin/bitcoin",
   "bitcoinfuzz/bitcoinfuzz",

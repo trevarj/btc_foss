@@ -1,0 +1,50 @@
+name: btc-foss-curate
+
+# Promotes candidate repositories the user has ticked (`- [x]`) on the
+# "Bitcoin FOSS repository candidates" issue into config/site.toml. Runs after the
+# pages workflow's daily collect so the issue body's checkmarks are already preserved.
+
+on:
+  schedule:
+    - cron: "57 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: read
+
+concurrency:
+  group: btc-foss-curate
+  cancel-in-progress: false
+
+jobs:
+  curate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build generator
+        run: cargo build --release
+
+      - name: Curate allowlist from candidate issue
+        env:
+          GITHUB_TOKEN: ${{ secrets.BTC_CONTRIBS_TOKEN || github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          ./target/release/btc-contribs curate --config config/site.toml
+
+      - name: Commit allowlist changes
+        run: |
+          if git diff --quiet config/site.toml; then
+            echo "no checked candidates to add"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}"
+          git add config/site.toml
+          git commit -m "chore(config): curate allowlist from candidate issue"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.BTC_CONTRIBS_TOKEN || github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}

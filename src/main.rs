@@ -69,12 +69,13 @@ fn run() -> Result<()> {
         "render" => render_cmd(&rest),
         "validate" => validate_cmd(&rest),
         "fixture" => fixture_cmd(&rest),
+        "curate" => curate_cmd(&rest),
         _ => usage(),
     }
 }
 
 fn usage() -> Result<()> {
-    Err("usage: btc-contribs <collect|render|validate|fixture> [--config PATH] [--feed PATH] [--state PATH] [--out PATH]".into())
+    Err("usage: btc-contribs <collect|render|validate|fixture|curate> [--config PATH] [--feed PATH] [--state PATH] [--out PATH] [--body-file PATH] [--dry-run]".into())
 }
 
 fn collect_cmd(args: &[String]) -> Result<()> {
@@ -119,10 +120,13 @@ fn collect_cmd(args: &[String]) -> Result<()> {
     write_parented(Path::new(&state_path), &feed.to_json())?;
 
     if !candidates.is_empty() {
-        let report = candidate_report(&config, &candidates);
+        // Preserve any - [x] checkmarks a user has ticked on the candidate issue
+        // before regenerating the body, so CI rewrites don't clobber approvals.
+        let (checked, issue_number) = resolve_candidate_issue(&token)?;
+        let report = candidate_report(&config, &candidates, &checked);
         write_parented(Path::new(&candidates_path), &report)?;
         if env::var("GITHUB_REPOSITORY").is_ok() {
-            update_candidate_issue(&token, &report)?;
+            update_candidate_issue(&token, issue_number, &report)?;
         }
     }
     Ok(())
@@ -199,6 +203,58 @@ fn fixture_cmd(args: &[String]) -> Result<()> {
         "--out".into(),
         out_dir,
     ])
+}
+
+fn curate_cmd(args: &[String]) -> Result<()> {
+    let config_path = flag(args, "--config").unwrap_or_else(|| "config/site.toml".into());
+    let body_file = flag(args, "--body-file");
+    let dry_run = args.iter().any(|a| a == "--dry-run");
+
+    // Resolve the candidate issue body to parse. Offline/agent callers pass a file
+    // (e.g. `gh issue view 4 --json body -q .body`); CI passes GITHUB_TOKEN instead.
+    let body = match body_file {
+        Some(path) => fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path))?,
+        None => {
+            let token = env::var("GITHUB_TOKEN")
+                .or_else(|_| env::var("GH_TOKEN"))
+                .map_err(|_| "curate needs --body-file or GITHUB_TOKEN/GH_TOKEN".to_string())?;
+            match find_candidate_issue(&token)? {
+                Some(number) => fetch_issue_body(&token, number)?,
+                None => return Ok(()), // no candidate issue yet; nothing to curate
+            }
+        }
+    };
+
+    let approved = parse_checked_repos(&body);
+    let raw = fs::read_to_string(&config_path).map_err(|e| format!("{}: {e}", config_path))?;
+    let config = Config::from_file(Path::new(&config_path))?;
+    let old_allowlist = config.allowlist.clone();
+
+    // Only checked repos not already on the allowlist are additions.
+    let additions: BTreeSet<String> = approved
+        .iter()
+        .filter(|r| !old_allowlist.contains(*r))
+        .cloned()
+        .collect();
+    if additions.is_empty() {
+        println!("no checked candidates to add");
+        return Ok(());
+    }
+
+    if dry_run {
+        for repo in &additions {
+            println!("+ {repo}");
+        }
+        println!("--dry-run: no changes written");
+        return Ok(());
+    }
+
+    let updated = replace_allowlist_in_toml(&raw, &additions)?;
+    fs::write(&config_path, updated).map_err(|e| format!("{}: {e}", config_path))?;
+    for repo in &additions {
+        println!("+ {repo}");
+    }
+    Ok(())
 }
 
 fn flag(args: &[String], name: &str) -> Option<String> {
@@ -317,6 +373,90 @@ fn parse_toml_array(value: &str) -> Result<Vec<String>> {
         } else if in_str {
             cur.push(ch);
         }
+    }
+    Ok(out)
+}
+
+// Rewrite only the `allowlist = [...]` block in a site.toml, preserving the comment
+// block above it, every other key, and the existing entry order. New `additions`
+// (that are not already listed) are appended at the end in sorted order, so a
+// curate run only ever adds lines and never reorders untouched ones.
+fn replace_allowlist_in_toml(text: &str, additions: &BTreeSet<String>) -> Result<String> {
+    let lines: Vec<&str> = text.lines().collect();
+    // Locate the allowlist assignment: key before `=` must be exactly "allowlist",
+    // and the line must open an array.
+    let start = lines
+        .iter()
+        .position(|l| {
+            let t = l.trim();
+            if !t.starts_with("allowlist") {
+                return false;
+            }
+            let Some((key, _)) = t.split_once('=') else {
+                return false;
+            };
+            key.trim() == "allowlist" && t.contains('[')
+        })
+        .ok_or("allowlist block not found in config")?;
+
+    // The closing `]` is either on the start line (empty one-liner) or on its own
+    // later line.
+    let end = if lines[start].trim().contains(']') {
+        start
+    } else {
+        let offset = lines[start..]
+            .iter()
+            .position(|l| {
+                let t = l.trim();
+                t == "]" || t.starts_with(']')
+            })
+            .ok_or("allowlist block not terminated")?;
+        start + offset
+    };
+
+    // Parse the existing entries in file order so we can preserve their positions.
+    let block_text = lines[start..=end].join("\n");
+    let (open, close) = (block_text.find('['), block_text.rfind(']'));
+    let existing = match (open, close) {
+        (Some(o), Some(c)) if o < c => parse_toml_array(&block_text[o..=c])?,
+        _ => Vec::new(),
+    };
+    let existing_set: BTreeSet<String> = existing.iter().cloned().collect();
+
+    // Preserve existing order; append new additions (sorted) at the end.
+    let mut ordered: Vec<String> = existing;
+    for repo in additions {
+        if !existing_set.contains(repo) {
+            ordered.push(repo.clone());
+        }
+    }
+
+    let mut block = String::from("allowlist = [");
+    if ordered.is_empty() {
+        block.push(']');
+    } else {
+        block.push('\n');
+        for repo in &ordered {
+            writeln!(&mut block, "  \"{repo}\",").unwrap();
+        }
+        block.push(']');
+    }
+
+    let mut out = String::with_capacity(text.len() + 64);
+    for (i, line) in lines.iter().enumerate() {
+        if i == start {
+            out.push_str(&block);
+            out.push('\n');
+        } else if i > start && i <= end {
+            // skip the old block lines
+        } else {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    // Preserve the original file's trailing-newline state.
+    if !text.ends_with('\n') && out.ends_with('\n') {
+        out.pop();
     }
     Ok(out)
 }
@@ -705,7 +845,11 @@ fn contribution_windows(months: i64, to: &str) -> Vec<(String, String)> {
     windows
 }
 
-fn candidate_report(config: &Config, candidates: &BTreeSet<String>) -> String {
+fn candidate_report(
+    config: &Config,
+    candidates: &BTreeSet<String>,
+    checked: &BTreeSet<String>,
+) -> String {
     let mut out = String::new();
     writeln!(out, "# Bitcoin FOSS candidate repositories\n").unwrap();
     writeln!(
@@ -716,38 +860,106 @@ fn candidate_report(config: &Config, candidates: &BTreeSet<String>) -> String {
     .unwrap();
     writeln!(
         out,
-        "Curate candidates by adding approved repositories to `config/site.toml` `allowlist`.\n"
+        "Tick `- [x]` next to a repository to approve it; CI curates the checked items into \
+         `config/site.toml` `allowlist`.\n"
     )
     .unwrap();
     for repo in candidates {
-        writeln!(out, "- [ ] `{repo}` - https://github.com/{repo}").unwrap();
+        let mark = if checked.contains(repo) { "x" } else { " " };
+        writeln!(out, "- [{mark}] `{repo}` - https://github.com/{repo}").unwrap();
     }
     out
 }
 
-fn update_candidate_issue(token: &str, body: &str) -> Result<()> {
+// The candidate issue title and label pinned on every create/update.
+const CANDIDATE_ISSUE_TITLE: &str = "Bitcoin FOSS repository candidates";
+const CANDIDATE_ISSUE_LABEL: &str = "btc-foss-candidates";
+
+// Look up the open candidate issue by title + label. Returns its number, if present.
+fn find_candidate_issue(token: &str) -> Result<Option<i64>> {
     let repo = env::var("GITHUB_REPOSITORY").map_err(|e| e.to_string())?;
-    let title = "Bitcoin FOSS repository candidates";
-    let list_url =
-        format!("https://api.github.com/repos/{repo}/issues?state=open&labels=btc-foss-candidates");
+    let list_url = format!(
+        "https://api.github.com/repos/{repo}/issues?state=open&labels={CANDIDATE_ISSUE_LABEL}"
+    );
     let list = curl_json(token, "GET", &list_url, None)?;
-    let issue_number = list.array().and_then(|issues| {
+    Ok(list.array().and_then(|issues| {
         issues.iter().find_map(|issue| {
-            (issue.get("title").and_then(Json::string) == Some(title))
+            (issue.get("title").and_then(Json::string) == Some(CANDIDATE_ISSUE_TITLE))
                 .then(|| issue.get("number").and_then(Json::number).unwrap_or(0.0) as i64)
         })
-    });
+    }))
+}
+
+// Fetch the full body of one issue (the list endpoint may omit/truncate it).
+fn fetch_issue_body(token: &str, number: i64) -> Result<String> {
+    let repo = env::var("GITHUB_REPOSITORY").map_err(|e| e.to_string())?;
+    let url = format!("https://api.github.com/repos/{repo}/issues/{number}");
+    let json = curl_json(token, "GET", &url, None)?;
+    Ok(json
+        .get("body")
+        .and_then(Json::string)
+        .unwrap_or("")
+        .to_string())
+}
+
+// Resolve the existing candidate issue's checked repos and number. Returns an empty
+// set + None when not running inside GitHub Actions (no GITHUB_REPOSITORY).
+fn resolve_candidate_issue(token: &str) -> Result<(BTreeSet<String>, Option<i64>)> {
+    if env::var("GITHUB_REPOSITORY").is_err() {
+        return Ok((BTreeSet::new(), None));
+    }
+    let number = find_candidate_issue(token)?;
+    let checked = match number {
+        Some(n) => parse_checked_repos(&fetch_issue_body(token, n)?),
+        None => BTreeSet::new(),
+    };
+    Ok((checked, number))
+}
+
+// Parse `- [x] \`owner/repo\`` task-list items from an issue body.
+fn parse_checked_repos(body: &str) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for line in body.lines() {
+        let t = line.trim();
+        let Some(rest) = t.strip_prefix("- [") else {
+            continue;
+        };
+        let Some(after_bracket) = rest
+            .strip_prefix(['x', 'X'])
+            .and_then(|s| s.strip_prefix(']'))
+        else {
+            continue;
+        };
+        let Some(inner) = after_bracket.trim_start().strip_prefix('`') else {
+            continue;
+        };
+        if let Some(end) = inner.find('`') {
+            let repo = inner[..end].trim();
+            if !repo.is_empty() {
+                out.insert(repo.to_string());
+            }
+        }
+    }
+    out
+}
+
+fn update_candidate_issue(token: &str, issue_number: Option<i64>, body: &str) -> Result<()> {
+    let repo = env::var("GITHUB_REPOSITORY").map_err(|e| e.to_string())?;
     let payload = format!(
-        r#"{{"title":"{}","body":"{}","labels":["btc-foss-candidates"]}}"#,
-        json_escape(title),
-        json_escape(body)
+        r#"{{"title":"{}","body":"{}","labels":["{}"]}}"#,
+        json_escape(CANDIDATE_ISSUE_TITLE),
+        json_escape(body),
+        CANDIDATE_ISSUE_LABEL,
     );
-    if let Some(number) = issue_number {
-        let url = format!("https://api.github.com/repos/{repo}/issues/{number}");
-        curl_json(token, "PATCH", &url, Some(&payload))?;
-    } else {
-        let url = format!("https://api.github.com/repos/{repo}/issues");
-        curl_json(token, "POST", &url, Some(&payload))?;
+    match issue_number {
+        Some(number) => {
+            let url = format!("https://api.github.com/repos/{repo}/issues/{number}");
+            curl_json(token, "PATCH", &url, Some(&payload))?;
+        }
+        None => {
+            let url = format!("https://api.github.com/repos/{repo}/issues");
+            curl_json(token, "POST", &url, Some(&payload))?;
+        }
     }
     Ok(())
 }
@@ -1813,5 +2025,101 @@ mod tests {
         assert!(html.contains("feed.json"));
         assert!(html.contains("wizardsardine/bhwi"));
         assert!(html.contains("1 PR, 1 commit"));
+    }
+
+    #[test]
+    fn parses_checked_repos_from_issue_body() {
+        let body = "\
+# Bitcoin FOSS candidate repositories
+
+Tick `- [x]` next to a repository to approve it.
+
+- [ ] `o/unchecked` - https://github.com/o/unchecked
+- [x] `trevarj/guix-bitcoin` - https://github.com/trevarj/guix-bitcoin
+- [X] `a/b` - https://github.com/a/b
+- [x]    `c/d` - https://github.com/c/d
+random prose - [x] `not/a/list`
+";
+        let checked = parse_checked_repos(body);
+        assert_eq!(
+            checked,
+            ["a/b", "c/d", "trevarj/guix-bitcoin"]
+                .into_iter()
+                .map(String::from)
+                .collect::<BTreeSet<_>>()
+        );
+    }
+
+    #[test]
+    fn candidate_report_preserves_checkmarks() {
+        let cfg = Config {
+            username: "trevarj".into(),
+            ..Config::default()
+        };
+        let candidates: BTreeSet<String> = ["a/checked", "b/unchecked", "c/checked"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let checked: BTreeSet<String> = ["a/checked", "c/checked"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let report = candidate_report(&cfg, &candidates, &checked);
+        assert!(report.contains("- [x] `a/checked` - https://github.com/a/checked"));
+        assert!(report.contains("- [ ] `b/unchecked` - https://github.com/b/unchecked"));
+        assert!(report.contains("- [x] `c/checked` - https://github.com/c/checked"));
+    }
+
+    #[test]
+    fn replace_allowlist_preserves_order_and_appends_additions() {
+        let raw = "\
+username = \"trevarj\"
+title = \"Bitcoin FOSS Contributions\"
+
+# Curated repositories are the only repositories published.
+allowlist = [
+  \"zeta/z\",
+  \"alpha/a\",
+]
+
+keywords = [\"bitcoin\"]
+exclude = []
+";
+        // Only the new repo is an addition; existing entries keep their order.
+        let additions: BTreeSet<String> = ["trevarj/guix-bitcoin"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let out = replace_allowlist_in_toml(raw, &additions).unwrap();
+        // Comments and other keys survive unchanged.
+        assert!(out.contains("# Curated repositories are the only repositories published."));
+        assert!(out.contains("username = \"trevarj\""));
+        assert!(out.contains("keywords = [\"bitcoin\"]"));
+        assert!(out.contains("exclude = []"));
+        // Existing order is preserved (zeta before alpha), addition appended last.
+        let z = out.find("\"zeta/z\"").unwrap();
+        let a = out.find("\"alpha/a\"").unwrap();
+        let g = out.find("\"trevarj/guix-bitcoin\"").unwrap();
+        assert!(z < a && a < g);
+        assert!(out.contains("\"alpha/a\",\n  \"trevarj/guix-bitcoin\",\n]"));
+    }
+
+    #[test]
+    fn replace_allowlist_skips_already_listed_additions() {
+        let raw = "allowlist = [\n  \"a/b\",\n]\n";
+        let additions: BTreeSet<String> = ["a/b", "c/d"].into_iter().map(String::from).collect();
+        let out = replace_allowlist_in_toml(raw, &additions).unwrap();
+        // a/b is not duplicated; c/d is appended.
+        assert_eq!(out, "allowlist = [\n  \"a/b\",\n  \"c/d\",\n]\n");
+    }
+
+    #[test]
+    fn replace_allowlist_handles_empty_block() {
+        let raw = "username = \"u\"\nallowlist = []\nkeywords = [\"bitcoin\"]\n";
+        let out = replace_allowlist_in_toml(raw, &BTreeSet::new()).unwrap();
+        assert_eq!(
+            out,
+            "username = \"u\"\nallowlist = []\nkeywords = [\"bitcoin\"]\n"
+        );
     }
 }
