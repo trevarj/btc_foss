@@ -16,6 +16,7 @@ allowlist = [
   "fanquake/core-review",
   "rust-bitcoin/rust-bitcoin",
   "rust-bitcoin/rust-miniscript",
+  "trevarj/guix-bitcoin",
   "wizardsardine/async-hwi",
   "wizardsardine/bhwi",
 ]
