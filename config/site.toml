@@ -19,6 +19,7 @@ allowlist = [
   "trevarj/guix-bitcoin",
   "wizardsardine/async-hwi",
   "wizardsardine/bhwi",
+  "wizardsardine/bhwi-ffi",
 ]
 
 keywords = ["bitcoin"]
