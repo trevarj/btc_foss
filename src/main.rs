@@ -1147,12 +1147,17 @@ fn render_html(config: &Config, feed: &Feed) -> String {
     writeln!(out, "<main class=\"btc-page\">").unwrap();
     writeln!(
         out,
+        "<p class=\"btc-kicker\"><span>Bitcoin ledger</span> JSON-backed contribution index</p>"
+    )
+    .unwrap();
+    writeln!(
+        out,
         "<h1>{}{}</h1>",
         bitcoin_logo_svg(),
         html(&config.title)
     )
     .unwrap();
-    writeln!(out, "<p class=\"btc-muted\">Public GitHub activity for <a href=\"https://github.com/{0}\">{0}</a>. Updated <time datetime=\"{1}\">{1}</time>. <a href=\"{2}feed.json\">feed.json</a></p>", html_attr(&feed.username), html_attr(&feed.generated_at), html_attr(&config.base_path)).unwrap();
+    writeln!(out, "<p class=\"btc-muted\">Public GitHub activity for <a href=\"https://github.com/{0}\">{0}</a>. Updated <time datetime=\"{1}\">{3}</time>. <a href=\"{2}feed.json\">feed.json</a></p>", html_attr(&feed.username), html_attr(&feed.generated_at), html_attr(&config.base_path), html(&short_date(&feed.generated_at))).unwrap();
     writeln!(
         out,
         "<section class=\"btc-stats\" aria-label=\"Contribution summary\">"
@@ -1164,14 +1169,18 @@ fn render_html(config: &Config, feed: &Feed) -> String {
         stat(&mut out, event_type_count_label(event_type), *count);
     }
     writeln!(out, "</section>").unwrap();
-    writeln!(out, "<form class=\"btc-filters\" id=\"btc-filters\">").unwrap();
+    writeln!(
+        out,
+        "<form class=\"btc-filters\" id=\"btc-filters\" role=\"search\">"
+    )
+    .unwrap();
+    writeln!(out, "<label class=\"btc-search\">Search<input type=\"search\" name=\"q\" placeholder=\"Titles and repositories\" autocomplete=\"off\"></label>").unwrap();
     select(&mut out, "repo", "Repository", repos.iter().copied());
     select(&mut out, "type", "Type", types.iter().copied());
     select(&mut out, "year", "Year", years.iter().copied().rev());
     writeln!(
         out,
-        "<a class=\"btc-reset\" href=\"{}\">Reset</a></form>",
-        html_attr(&config.base_path)
+        "<output class=\"btc-result-count\" id=\"btc-result-count\" aria-live=\"polite\">All activity</output><button class=\"btc-reset\" type=\"reset\">Reset</button></form>"
     )
     .unwrap();
     writeln!(out, "<div class=\"btc-timeline\" id=\"btc-timeline\">").unwrap();
@@ -1182,18 +1191,32 @@ fn render_html(config: &Config, feed: &Feed) -> String {
     }
     let mut groups: Vec<_> = grouped.into_values().collect();
     groups.sort_by(|a, b| b[0].occurred_at.cmp(&a[0].occurred_at));
+    let mut current_month = "";
     for mut group in groups {
         group.sort_by(|a, b| b.occurred_at.cmp(&a.occurred_at).then(a.id.cmp(&b.id)));
         let first = group[0];
         let year = first.occurred_at.get(0..4).unwrap_or("");
+        let month = first.occurred_at.get(0..7).unwrap_or("");
+        if month != current_month {
+            writeln!(
+                out,
+                "<h2 class=\"btc-month\" data-month=\"{}\"><span>{} {}</span></h2>",
+                html_attr(month),
+                month_name(&first.occurred_at),
+                html(year)
+            )
+            .unwrap();
+            current_month = month;
+        }
         let row_kind = group_kind(&group);
         let row_title = group_title(&group);
         writeln!(
             out,
-            "<details class=\"btc-thread\" data-repo=\"{}\" data-type=\"{}\" data-year=\"{}\">",
+            "<details class=\"btc-thread\" data-repo=\"{}\" data-type=\"{}\" data-year=\"{}\" data-month=\"{}\">",
             html_attr(&first.repo),
             html_attr(&row_kind),
-            html_attr(year)
+            html_attr(year),
+            html_attr(month)
         )
         .unwrap();
         writeln!(out, "<summary><span class=\"btc-icon\">{}</span>{}<span class=\"btc-row-repo\">{}</span><time class=\"btc-row-date\" datetime=\"{}\">{}</time><span class=\"btc-row-kind\">{}</span></summary>",
@@ -1376,138 +1399,170 @@ fn render_bitcoin_theme_css() -> &'static str {
     r#"html[data-theme="bitcoin"],
 html[data-theme="bitcoin"]::backdrop {
   color-scheme: dark;
-  --bg: #0c0f14;
-  --bg-deep: #05070a;
-  --accent-bg: #141017;
-  --panel-bg: rgba(18, 22, 29, 0.9);
-  --panel-bg-strong: rgba(29, 25, 24, 0.95);
-  --text: #f4e7cf;
-  --text-light: #c9a875;
-  --text-muted: #8b7558;
-  --border: #7f5a24;
-  --border-soft: rgba(247, 147, 26, 0.28);
+  --bg: #0a0e14;
+  --bg-deep: #070a0f;
+  --accent-bg: #11151c;
+  --panel-bg: #11151c;
+  --panel-bg-strong: #171b24;
+  --text: #b3b1ad;
+  --text-light: #9da5b4;
+  --text-muted: #7a818e;
+  --border: #303540;
+  --border-soft: #242b36;
   --accent: #f7931a;
-  --accent-hover: #ffbf5f;
-  --accent-text: #120900;
-  --code: #ffd28a;
-  --preformatted: #d8b06f;
+  --accent-rgb: 247 147 26;
+  --accent-hover: #ffb454;
+  --accent-text: #0a0e14;
+  --code: #ffb454;
+  --preformatted: #b3b1ad;
   --marked: #f7931a;
-  --disabled: #352717;
-  --selection-text: #fff2db;
-  --selection-bg: rgba(247, 147, 26, 0.32);
+  --disabled: #242b36;
+  --selection-text: #e6e1cf;
+  --selection-bg: rgba(247, 147, 26, 0.28);
   --measure: 78rem;
   --page-gutter: clamp(0.75rem, 4vw, 4rem);
-  --body-bg-start: #121922;
-  --body-bg-mid: #0c0f14;
-  --body-bg-end: #05070a;
-  --body-ambient-top: rgba(247, 147, 26, 0.11);
-  --body-ambient-bottom: rgba(55, 132, 122, 0.08);
-  --body-grain-line: rgba(247, 147, 26, 0.014);
-  --scanline-dark: rgba(0, 0, 0, 0.2);
-  --scanline-bright: rgba(247, 147, 26, 0.026);
-  --scanline-sweep-a: rgba(247, 147, 26, 0.016);
-  --scanline-sweep-b: rgba(55, 132, 122, 0.008);
-  --scanline-sweep-c: rgba(0, 0, 0, 0.1);
-  --header-veil-top: rgba(247, 147, 26, 0.1);
-  --header-veil-bottom: rgba(55, 132, 122, 0.025);
-  --header-shadow: rgba(247, 147, 26, 0.09);
-  --header-divider-soft: rgba(247, 147, 26, 0.22);
-  --header-divider-core: rgba(55, 132, 122, 0.2);
-  --main-vignette: rgba(247, 147, 26, 0.08);
-  --footer-divider: rgba(247, 147, 26, 0.5);
-  --heading-color: #ffd08a;
-  --link-decoration: rgba(247, 147, 26, 0.68);
-  --link-hover-shadow: 0 0 0.85rem rgba(247, 147, 26, 0.34);
-  --link-focus-inner: 0 0 0 2px rgba(55, 132, 122, 0.32);
-  --link-focus-outer: 0 0 0.95rem rgba(247, 147, 26, 0.48);
-  --button-top: #ffbd59;
+  --body-bg-start: #0f131a;
+  --body-bg-mid: #0a0e14;
+  --body-bg-end: #070a0f;
+  --body-ambient-top: transparent;
+  --body-ambient-bottom: transparent;
+  --body-grain-line: transparent;
+  --header-veil-top: transparent;
+  --header-veil-bottom: transparent;
+  --header-shadow: transparent;
+  --header-divider-soft: #303540;
+  --header-divider-core: rgba(247, 147, 26, 0.45);
+  --main-vignette: transparent;
+  --footer-divider: #303540;
+  --heading-color: #e6e1cf;
+  --link-decoration: rgba(247, 147, 26, 0.72);
+  --link-hover-shadow: none;
+  --link-focus-inner: 0 0 0 0 transparent;
+  --link-focus-outer: 0 0 0 0 transparent;
+  --link-flicker-duration: 0s;
+  --button-top: #ffb454;
   --button-bottom: #f7931a;
-  --button-hover-shadow: 0 0 1.15rem rgba(247, 147, 26, 0.42);
-  --button-focus-shadow: 0 0 0.95rem rgba(55, 132, 122, 0.45);
-  --select-overlay-top: rgba(247, 147, 26, 0.08);
-  --select-overlay-bottom: rgba(55, 132, 122, 0.018);
-  --select-surface: rgba(12, 15, 20, 0.68);
-  --select-border: rgba(247, 147, 26, 0.64);
-  --select-focus: 0 0 0 2px rgba(55, 132, 122, 0.22),
-    0 0 0.7rem rgba(247, 147, 26, 0.4);
-  --link-glow: 0 0 0.16rem rgba(255, 180, 80, 0.54),
-    0 0 0.38rem rgba(247, 147, 26, 0.34),
-    0 0 0.62rem rgba(55, 132, 122, 0.2);
-  --link-glow-strong: 0 0 0.22rem rgba(255, 205, 115, 0.82),
-    0 0 0.56rem rgba(247, 147, 26, 0.58),
-    0 0 1.05rem rgba(55, 132, 122, 0.28);
-  --crt-glow: 0 0 0.16rem rgba(247, 147, 26, 0.22),
-    0 0 0.75rem rgba(55, 132, 122, 0.09);
-  --crt-glow-strong: 0 0 0.22rem rgba(255, 190, 98, 0.62),
-    0 0 1.05rem rgba(247, 147, 26, 0.28);
-  --crt-panel-shadow: inset 0 0 0 1px rgba(247, 147, 26, 0.12),
-    0 0 1.1rem rgba(55, 132, 122, 0.08);
-  --grain-strength: 0.066;
-  --grain-size: 112px;
-  --grain-animation-speed: 2.8s;
-  --grain-contrast: 310%;
-  --snow-layers: none;
-  --snow-size: auto;
-  --snow-position: 0 0;
-  --snow-position-end: 0 0;
+  --button-hover-shadow: none;
+  --button-focus-shadow: none;
+  --select-overlay-top: transparent;
+  --select-overlay-bottom: transparent;
+  --select-surface: #11151c;
+  --select-border: #3d4654;
+  --select-focus: none;
+  --link-glow: none;
+  --link-glow-strong: none;
+  --crt-glow: none;
+  --crt-glow-strong: none;
+  --crt-panel-shadow: 0 0 0 0 transparent;
+  --grain-strength: 0;
   --snow-opacity: 0;
   --snow-animation: none;
-
-  --btc-profit: #63d39a;
-  --btc-cyan: #3a9e92;
-  --btc-warning: #ffbf5f;
-  --btc-danger: #d86b5f;
+  --btc-profit: #aad94c;
+  --btc-cyan: #59c2ff;
+  --btc-warning: #ffb454;
+  --btc-danger: #f07178;
+}
+html[data-theme="bitcoin"] body::before,
+html[data-theme="bitcoin"] body::after {
+  display: none;
 }
 "#
 }
 
 fn render_css() -> &'static str {
-    r#".btc-page { padding-top: var(--space-lg); }
+    r#".btc-page { padding-top: var(--space-lg); interpolate-size: allow-keywords; }
 .btc-page h1 {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.55rem;
+  margin-top: 0.25rem;
+  letter-spacing: -0.035em;
+  text-align: center;
+  text-wrap: balance;
 }
+.btc-kicker { margin: 0; color: var(--text-muted); font-family: var(--mono-font); font-size: 0.7rem; letter-spacing: 0.1em; text-align: center; text-transform: uppercase; }
+.btc-kicker span { color: var(--accent); }
 .btc-logo {
   flex: 0 0 auto;
   inline-size: 1.85rem;
   block-size: 1.85rem;
   border: 0;
   border-radius: 50%;
-  filter: drop-shadow(0 0 0.65rem rgba(247, 147, 26, 0.42));
+  filter: none;
   opacity: 1;
 }
-.btc-muted { color: var(--text-light); font-size: 0.92rem; }
-.btc-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); gap: 0.5rem; padding: 0; border: 0; background: transparent; box-shadow: none; }
-.btc-stats div { border: 1px solid var(--border); border-radius: var(--standard-border-radius); padding: 0.45rem 0.55rem; background: linear-gradient(180deg, rgba(247, 147, 26, 0.07), rgba(247, 147, 26, 0.02)), var(--panel-bg); }
-.btc-stats strong { display: block; color: var(--accent-hover); font-size: 1.2rem; line-height: 1; }
-.btc-stats span { color: var(--text-light); font-size: 0.78rem; text-transform: uppercase; }
-.btc-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 0.6rem; align-items: end; margin: var(--space-lg) 0; }
-.btc-filters label { font-size: 0.78rem; text-transform: uppercase; }
-.btc-filters select { width: 100%; margin: 0.2rem 0 0; }
-.btc-reset { align-self: center; white-space: nowrap; }
+.btc-muted { color: var(--text-light); font-size: 0.92rem; text-align: center; }
+.btc-stats { position: relative; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.35rem 1.25rem; width: fit-content; max-width: 100%; margin-inline: auto; padding: 0.65rem 0.75rem; overflow: hidden; border: 1px solid var(--border); border-radius: var(--standard-border-radius); background: var(--panel-bg); }
+.btc-stats::before { content: ""; position: absolute; inset: 0 0 auto; height: 2px; background: var(--accent); }
+.btc-stats div { display: flex; align-items: baseline; gap: 0.35rem; padding: 0; border: 0; background: transparent; box-shadow: none; }
+.btc-stats strong { color: var(--accent); font-size: 1rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.btc-stats span { color: var(--text-muted); font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; }
+.btc-filters { display: grid; grid-template-columns: minmax(13rem, 1.5fr) repeat(3, minmax(7rem, 1fr)) auto auto; gap: 0.6rem; align-items: end; margin: var(--space-lg) 0; padding: 0.65rem; border: 1px solid var(--border); border-radius: var(--standard-border-radius); background: var(--panel-bg); box-shadow: none; }
+.btc-filters label { font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; }
+.btc-filters :is(input, select) { width: 100%; margin: 0.2rem 0 0; }
+.btc-result-count { align-self: center; color: var(--text-muted); font-size: 0.78rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.btc-reset { align-self: end; white-space: nowrap; min-block-size: 2.25rem; display: inline-grid; place-items: center; padding-inline: 0.75rem; border: 1px solid var(--border); border-radius: var(--standard-border-radius); }
 .btc-timeline { position: relative; display: grid; gap: 0.35rem; }
-.btc-thread { margin: 0; border-color: var(--border-soft); }
+.btc-month { display: flex; align-items: center; gap: 1rem; margin: 1rem 0 0.1rem; padding: 0.3rem 0.15rem; border-bottom: 1px solid var(--border); color: var(--text-muted); font-family: var(--mono-font); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; }
+.btc-month::after { content: ""; width: 0.75rem; height: 0.5rem; margin-left: auto; border: 1px solid var(--accent); background: rgba(247, 147, 26, 0.12); }
+.btc-month[hidden] { display: none; }
+.btc-thread { margin: 0; border-color: var(--border); border-inline-start-width: 2px; background: var(--panel-bg); box-shadow: none; }
+.btc-thread:hover { border-inline-start-color: var(--accent); }
+.btc-thread[open] { border-color: var(--accent); background: var(--panel-bg-strong); box-shadow: none; }
 .btc-thread[hidden] { display: none; }
-.btc-thread summary { display: grid; grid-template-columns: 1.8rem minmax(10rem, 1fr) minmax(9rem, 0.65fr) 6.2rem 7.8rem; gap: 0.55rem; align-items: center; min-block-size: 2.25rem; word-break: normal; }
-.btc-thread summary::marker { color: var(--accent-hover); }
+.btc-thread summary { display: grid; grid-template-columns: 1.8rem minmax(10rem, 1fr) minmax(9rem, 0.65fr) 6.2rem 7.8rem; gap: 0.55rem; align-items: center; min-block-size: 2.25rem; word-break: normal; border-radius: calc(var(--standard-border-radius) - 1px); cursor: pointer; }
+.btc-thread summary::marker { color: var(--accent); font-size: 0.78em; }
+.btc-thread summary:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 3px; }
+.btc-thread[open] > summary { margin-bottom: 0; border-bottom: 1px solid var(--border); border-radius: calc(var(--standard-border-radius) - 1px) calc(var(--standard-border-radius) - 1px) 0 0; }
 .btc-row-title { display: inline-flex; align-items: center; gap: 0.3rem; min-width: 0; overflow: hidden; white-space: nowrap; color: var(--heading-color); }
 .btc-row-title > :is(a, .btc-row-title-text):first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .btc-row-repo { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-light); font-size: 0.78rem; font-weight: normal; }
 .btc-row-date { color: var(--text-light); font-size: 0.78rem; font-weight: normal; font-variant-numeric: tabular-nums; text-align: end; white-space: nowrap; }
 .btc-row-kind { display: inline-flex; justify-content: center; inline-size: 100%; color: var(--text-light); border: 1px solid var(--border-soft); border-radius: var(--standard-border-radius); padding: 0.03rem 0.32rem; font-size: 0.76rem; font-weight: normal; white-space: nowrap; text-transform: uppercase; }
-.btc-icon { display: inline-grid; place-items: center; width: 1.35rem; height: 1.35rem; border: 1px solid var(--accent); border-radius: 50%; color: var(--accent-text); background: var(--accent); text-shadow: none; box-shadow: 0 0 0.65rem rgba(247, 147, 26, 0.28); }
-.btc-thread-detail { margin-top: 0.45rem; padding-top: 0.45rem; border-top: 1px solid var(--border-soft); }
-.btc-thread ul { margin: 0.45rem 0 0 1.75rem; padding-left: 0; list-style: none; }
-.btc-thread li { display: grid; grid-template-columns: 1.25rem auto auto minmax(0, 1fr) auto; gap: 0.38rem; align-items: center; margin: 0.28rem 0; }
+.btc-icon { display: inline-grid; place-items: center; width: 1.35rem; height: 1.35rem; border: 1px solid var(--accent); border-radius: 50%; color: var(--accent-text); background: var(--accent); text-shadow: none; box-shadow: none; }
+.btc-thread-detail { margin: 0; padding-top: 0.35rem; border-top: 0; }
+.btc-thread-detail a:is(:hover, :focus-visible) { color: var(--accent-hover); background: transparent; text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 0.16em; text-shadow: none; box-shadow: none; transform: none; animation: none; }
+.btc-thread ul { margin: 0; padding-left: 0; list-style: none; }
+.btc-thread li { display: grid; grid-template-columns: 1.25rem auto auto minmax(0, 1fr) auto; gap: 0.38rem; align-items: center; margin: 0; padding: 0.4rem 0.2rem; border-bottom: 1px solid var(--border-soft); }
+.btc-thread li:last-child { border-bottom: 0; }
 .btc-detail-icon { display: inline-grid; place-items: center; width: 1rem; height: 1rem; color: var(--accent-hover); }
 .btc-thread time, .btc-kind, .btc-status { color: var(--text-light); font-size: 0.78rem; }
 .btc-kind, .btc-status { border: 1px solid var(--border-soft); border-radius: var(--standard-border-radius); padding: 0.03rem 0.28rem; }
+@keyframes btc-enter {
+  from { opacity: 0; transform: translateY(0.55rem); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .btc-page > :is(.btc-kicker, h1, .btc-muted, .btc-stats, .btc-filters, .btc-timeline) { animation: btc-enter 0.48s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .btc-page > .btc-muted { animation-delay: 0.05s; }
+  .btc-page > .btc-stats { animation-delay: 0.1s; }
+  .btc-page > .btc-filters { animation-delay: 0.15s; }
+  .btc-page > .btc-timeline { animation-delay: 0.2s; }
+  .btc-thread { transition: border-color 0.2s ease, background-color 0.2s ease; }
+  .btc-thread::details-content { block-size: 0; overflow-y: clip; opacity: 0; transition: content-visibility 0.26s allow-discrete, block-size 0.26s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s ease; }
+  .btc-thread[open]::details-content { block-size: auto; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btc-page *, .btc-thread::details-content { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+@media only screen and (min-width: 1001px) {
+  .btc-filters { position: sticky; top: 0.5rem; z-index: 4; }
+}
+@media only screen and (max-width: 1000px) {
+  .btc-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .btc-search { grid-column: 1 / -1; }
+  .btc-result-count { justify-self: start; }
+}
 @media only screen and (max-width: 720px) {
   .btc-filters { grid-template-columns: 1fr; }
+  .btc-search { grid-column: auto; }
+  .btc-reset { inline-size: 100%; }
   .btc-thread summary { grid-template-columns: 1.5rem minmax(0, 1fr) auto; gap: 0.4rem; }
   .btc-row-repo { grid-column: 2; }
   .btc-row-kind { display: none; }
+  .btc-thread ul { margin-left: 0; }
+  .btc-thread li { grid-template-columns: 1.25rem auto minmax(0, 1fr); }
+  .btc-thread li > a, .btc-status { grid-column: 2 / -1; overflow-wrap: anywhere; }
 }
 "#
 }
@@ -1516,6 +1571,8 @@ fn render_js() -> &'static str {
     r#"(function () {
   const form = document.getElementById("btc-filters");
   const items = Array.from(document.querySelectorAll(".btc-thread"));
+  const count = document.getElementById("btc-result-count");
+  const monthHeadings = Array.from(document.querySelectorAll(".btc-month"));
   const defaults = new Map();
   for (const item of items) {
     const summary = item.querySelector("summary");
@@ -1565,13 +1622,17 @@ fn render_js() -> &'static str {
   }
   function apply() {
     const data = new FormData(form);
+    const query = String(data.get("q") || "").trim().toLowerCase();
     const repo = data.get("repo");
     const type = data.get("type");
     const year = data.get("year");
+    const visibleMonths = new Set();
+    let visible = 0;
     for (const item of items) {
       const detailRows = Array.from(item.querySelectorAll("[data-type]"));
       const matchingRows = type ? detailRows.filter((row) => row.dataset.type === type) : detailRows;
-      const ok = (!repo || item.dataset.repo === repo) &&
+      const ok = (!query || item.textContent.toLowerCase().includes(query)) &&
+        (!repo || item.dataset.repo === repo) &&
         (!type || matchingRows.length > 0) &&
         (!year || item.dataset.year === year);
       item.hidden = !ok;
@@ -1579,11 +1640,19 @@ fn render_js() -> &'static str {
         row.hidden = Boolean(type && row.dataset.type !== type);
       }
       if (ok) {
+        visible += 1;
+        visibleMonths.add(item.dataset.month);
         setSummary(item, type, matchingRows);
       }
     }
+    for (const heading of monthHeadings) {
+      heading.hidden = !visibleMonths.has(heading.dataset.month);
+    }
+    count.textContent = `${visible} result${visible === 1 ? "" : "s"}`;
   }
-  form.addEventListener("change", apply);
+  form.addEventListener("input", apply);
+  form.addEventListener("reset", () => requestAnimationFrame(apply));
+  apply();
 })();
 "#
 }
@@ -1857,6 +1926,24 @@ fn civil_from_days(days: i64) -> (i64, i64, i64) {
     (y + (m <= 2) as i64, m, d)
 }
 
+fn month_name(iso: &str) -> &'static str {
+    match iso.get(5..7) {
+        Some("01") => "January",
+        Some("02") => "February",
+        Some("03") => "March",
+        Some("04") => "April",
+        Some("05") => "May",
+        Some("06") => "June",
+        Some("07") => "July",
+        Some("08") => "August",
+        Some("09") => "September",
+        Some("10") => "October",
+        Some("11") => "November",
+        Some("12") => "December",
+        _ => "Activity",
+    }
+}
+
 fn short_date(iso: &str) -> String {
     iso.get(0..10).unwrap_or(iso).to_string()
 }
@@ -2025,6 +2112,19 @@ mod tests {
         assert!(html.contains("feed.json"));
         assert!(html.contains("wizardsardine/bhwi"));
         assert!(html.contains("1 PR, 1 commit"));
+        assert!(html.contains("datetime=\"2026-05-15T00:00:00Z\">2026-05-15</time>"));
+        let css = render_css();
+        assert!(render_bitcoin_theme_css().contains("--accent: #f7931a;"));
+        assert!(render_bitcoin_theme_css().contains("--bg: #0a0e14;"));
+        assert!(render_bitcoin_theme_css().contains("--link-glow: none;"));
+        assert!(html.contains("type=\"search\""));
+        assert!(html.contains("id=\"btc-result-count\""));
+        assert!(html.contains("Bitcoin ledger</span> JSON-backed contribution index"));
+        assert!(html.contains("May 2026</span></h2>"));
+        assert!(!html.contains("<small>#"));
+        assert!(render_js().contains("form.addEventListener(\"input\", apply)"));
+        assert!(css.contains(".btc-thread::details-content"));
+        assert!(css.contains("@media (prefers-reduced-motion: reduce)"));
     }
 
     #[test]
