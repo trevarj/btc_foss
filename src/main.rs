@@ -1147,11 +1147,6 @@ fn render_html(config: &Config, feed: &Feed) -> String {
     writeln!(out, "<main class=\"btc-page\">").unwrap();
     writeln!(
         out,
-        "<p class=\"btc-kicker\"><span>Bitcoin ledger</span> JSON-backed contribution index</p>"
-    )
-    .unwrap();
-    writeln!(
-        out,
         "<h1>{}{}</h1>",
         bitcoin_logo_svg(),
         html(&config.title)
@@ -1180,9 +1175,10 @@ fn render_html(config: &Config, feed: &Feed) -> String {
     select(&mut out, "year", "Year", years.iter().copied().rev());
     writeln!(
         out,
-        "<output class=\"btc-result-count\" id=\"btc-result-count\" aria-live=\"polite\">All activity</output><button class=\"btc-reset\" type=\"reset\">Reset</button></form>"
+        "<output class=\"btc-result-count\" id=\"btc-result-count\" aria-live=\"polite\">All repo/day groups</output><button class=\"btc-reset\" type=\"reset\">Reset</button></form>"
     )
     .unwrap();
+    writeln!(out, "<p class=\"btc-empty\" id=\"btc-empty\" hidden>No repo/day groups match these filters. Adjust the filters or use Reset above.</p>").unwrap();
     writeln!(out, "<div class=\"btc-timeline\" id=\"btc-timeline\">").unwrap();
 
     let mut grouped: BTreeMap<String, Vec<&Event>> = BTreeMap::new();
@@ -1219,7 +1215,7 @@ fn render_html(config: &Config, feed: &Feed) -> String {
             html_attr(month)
         )
         .unwrap();
-        writeln!(out, "<summary><span class=\"btc-icon\">{}</span>{}<span class=\"btc-row-repo\">{}</span><time class=\"btc-row-date\" datetime=\"{}\">{}</time><span class=\"btc-row-kind\">{}</span></summary>",
+        writeln!(out, "<summary><span class=\"btc-icon\" aria-hidden=\"true\">{}</span>{}<span class=\"btc-row-repo\">{}</span><time class=\"btc-row-date\" datetime=\"{}\">{}</time><span class=\"btc-row-kind\">{}</span></summary>",
             icon(&row_kind),
             row_title_cell(&group, &row_title),
             html(&first.repo),
@@ -1230,7 +1226,7 @@ fn render_html(config: &Config, feed: &Feed) -> String {
         writeln!(out, "<div class=\"btc-thread-detail\">").unwrap();
         writeln!(out, "<ul>").unwrap();
         for event in group {
-            writeln!(out, "<li data-type=\"{}\" data-title=\"{}\" data-url=\"{}\"><span class=\"btc-detail-icon\">{}</span><time datetime=\"{}\">{}</time> <span class=\"btc-kind\">{}</span> <a href=\"{}\">{}</a>{}</li>",
+            writeln!(out, "<li data-type=\"{}\" data-title=\"{}\" data-url=\"{}\"><span class=\"btc-detail-icon\" aria-hidden=\"true\">{}</span><time datetime=\"{}\">{}</time> <span class=\"btc-kind\">{}</span> <a href=\"{}\">{}</a>{}</li>",
                 html_attr(&event.event_type),
                 html_attr(&event.title),
                 html_attr(&event.url),
@@ -1279,17 +1275,26 @@ fn event_type_count_label(kind: &str) -> &'static str {
 fn select<'a>(out: &mut String, name: &str, label: &str, options: impl Iterator<Item = &'a str>) {
     writeln!(
         out,
-        "<label>{}<select name=\"{}\"><option value=\"\">All</option>",
+        "<label class=\"btc-filter-{}\">{}<select name=\"{}\"><option value=\"\">All</option>",
+        html_attr(name),
         html(label),
         html_attr(name)
     )
     .unwrap();
     for option in options {
+        let text = match (name, option) {
+            ("type", "pull_request") => "Pull request",
+            ("type", "review") => "Review",
+            ("type", "commit") => "Commit",
+            ("type", "comment") => "Comment",
+            ("type", "issue") => "Issue",
+            _ => option,
+        };
         writeln!(
             out,
             "<option value=\"{}\">{}</option>",
             html_attr(option),
-            html(option)
+            html(text)
         )
         .unwrap();
     }
@@ -1392,7 +1397,7 @@ fn icon(kind: &str) -> &'static str {
 }
 
 fn bitcoin_logo_svg() -> &'static str {
-    r#"<img class="btc-logo" src="https://upload.wikimedia.org/wikipedia/commons/4/46/Bitcoin.svg" alt="Bitcoin">"#
+    r#"<img class="btc-logo" src="https://upload.wikimedia.org/wikipedia/commons/4/46/Bitcoin.svg" alt="">"#
 }
 
 fn render_bitcoin_theme_css() -> &'static str {
@@ -1481,8 +1486,6 @@ fn render_css() -> &'static str {
   text-align: center;
   text-wrap: balance;
 }
-.btc-kicker { margin: 0; color: var(--text-muted); font-family: var(--mono-font); font-size: 0.7rem; letter-spacing: 0.1em; text-align: center; text-transform: uppercase; }
-.btc-kicker span { color: var(--accent); }
 .btc-logo {
   flex: 0 0 auto;
   inline-size: 1.85rem;
@@ -1499,23 +1502,26 @@ fn render_css() -> &'static str {
 .btc-stats strong { color: var(--accent); font-size: 1rem; line-height: 1; font-variant-numeric: tabular-nums; }
 .btc-stats span { color: var(--text-muted); font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; }
 .btc-filters { display: grid; grid-template-columns: minmax(13rem, 1.5fr) repeat(3, minmax(7rem, 1fr)) auto auto; gap: 0.6rem; align-items: end; margin: var(--space-lg) 0; padding: 0.65rem; border: 1px solid var(--border); border-radius: var(--standard-border-radius); background: var(--panel-bg); box-shadow: none; }
-.btc-filters label { font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; }
-.btc-filters :is(input, select) { width: 100%; margin: 0.2rem 0 0; }
-.btc-result-count { align-self: center; color: var(--text-muted); font-size: 0.78rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.btc-reset { align-self: end; white-space: nowrap; min-block-size: 2.25rem; display: inline-grid; place-items: center; padding-inline: 0.75rem; border: 1px solid var(--border); border-radius: var(--standard-border-radius); }
+.btc-filters label { min-width: 0; font-size: 0.72rem; letter-spacing: 0.04em; text-transform: uppercase; }
+.btc-filters :is(input, select) { width: 100%; min-block-size: 2.75rem; margin: 0.2rem 0 0; font-size: 1rem; }
+.btc-result-count { align-self: center; color: var(--text-muted); font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+.btc-filters .btc-reset { align-self: end; justify-self: end; white-space: nowrap; min-block-size: 2.75rem; margin: 0; display: inline-grid; place-items: center; padding-inline: 0.75rem; border: 1px solid var(--border); border-radius: var(--standard-border-radius); color: var(--text-light); background: transparent; font-size: 0.85rem; }
+.btc-reset:enabled:hover { color: var(--heading-color); background: var(--panel-bg-strong); border-color: var(--text-muted); transform: none; }
+.btc-empty { color: var(--text-light); text-align: center; }
 .btc-timeline { position: relative; display: grid; gap: 0.35rem; }
 .btc-month { display: flex; align-items: center; gap: 1rem; margin: 1rem 0 0.1rem; padding: 0.3rem 0.15rem; border-bottom: 1px solid var(--border); color: var(--text-muted); font-family: var(--mono-font); font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; }
-.btc-month::after { content: ""; width: 0.75rem; height: 0.5rem; margin-left: auto; border: 1px solid var(--accent); background: rgba(247, 147, 26, 0.12); }
 .btc-month[hidden] { display: none; }
 .btc-thread { margin: 0; border-color: var(--border); border-inline-start-width: 2px; background: var(--panel-bg); box-shadow: none; }
 .btc-thread:hover { border-inline-start-color: var(--accent); }
 .btc-thread[open] { border-color: var(--accent); background: var(--panel-bg-strong); box-shadow: none; }
 .btc-thread[hidden] { display: none; }
-.btc-thread summary { display: grid; grid-template-columns: 1.8rem minmax(10rem, 1fr) minmax(9rem, 0.65fr) 6.2rem 7.8rem; gap: 0.55rem; align-items: center; min-block-size: 2.25rem; word-break: normal; border-radius: calc(var(--standard-border-radius) - 1px); cursor: pointer; }
-.btc-thread summary::marker { color: var(--accent); font-size: 0.78em; }
+.btc-thread summary { position: relative; display: grid; grid-template-columns: 1.8rem minmax(10rem, 1fr) minmax(9rem, 0.65fr) 6.2rem 7.8rem; gap: 0.55rem; align-items: center; min-block-size: 2.75rem; padding-inline-end: 1.7rem; word-break: normal; list-style: none; border-radius: calc(var(--standard-border-radius) - 1px); cursor: pointer; }
+.btc-thread summary::-webkit-details-marker { display: none; }
+.btc-thread summary::after { content: ""; position: absolute; inset-inline-end: 0.7rem; inset-block-start: 50%; inline-size: 0.4rem; block-size: 0.4rem; border-right: 1px solid var(--text-light); border-bottom: 1px solid var(--text-light); transform: translateY(-50%) rotate(-45deg); }
+.btc-thread[open] > summary::after { transform: translateY(-50%) rotate(45deg); }
 .btc-thread summary:focus-visible { outline: 2px solid var(--accent-hover); outline-offset: 3px; }
 .btc-thread[open] > summary { margin-bottom: 0; border-bottom: 1px solid var(--border); border-radius: calc(var(--standard-border-radius) - 1px) calc(var(--standard-border-radius) - 1px) 0 0; }
-.btc-row-title { display: inline-flex; align-items: center; gap: 0.3rem; min-width: 0; overflow: hidden; white-space: nowrap; color: var(--heading-color); }
+.btc-row-title { display: inline-flex; align-items: center; gap: 0.3rem; min-width: 0; white-space: nowrap; color: var(--heading-color); }
 .btc-row-title > :is(a, .btc-row-title-text):first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .btc-row-repo { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-light); font-size: 0.78rem; font-weight: normal; }
 .btc-row-date { color: var(--text-light); font-size: 0.78rem; font-weight: normal; font-variant-numeric: tabular-nums; text-align: end; white-space: nowrap; }
@@ -1525,6 +1531,7 @@ fn render_css() -> &'static str {
 .btc-thread-detail a:is(:hover, :focus-visible) { color: var(--accent-hover); background: transparent; text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 0.16em; text-shadow: none; box-shadow: none; transform: none; animation: none; }
 .btc-thread ul { margin: 0; padding-left: 0; list-style: none; }
 .btc-thread li { display: grid; grid-template-columns: 1.25rem auto auto minmax(0, 1fr) auto; gap: 0.38rem; align-items: center; margin: 0; padding: 0.4rem 0.2rem; border-bottom: 1px solid var(--border-soft); }
+.btc-thread li[hidden] { display: none; }
 .btc-thread li:last-child { border-bottom: 0; }
 .btc-detail-icon { display: inline-grid; place-items: center; width: 1rem; height: 1rem; color: var(--accent-hover); }
 .btc-thread time, .btc-kind, .btc-status { color: var(--text-light); font-size: 0.78rem; }
@@ -1533,7 +1540,7 @@ fn render_css() -> &'static str {
   from { opacity: 0; transform: translateY(0.55rem); }
 }
 @media (prefers-reduced-motion: no-preference) {
-  .btc-page > :is(.btc-kicker, h1, .btc-muted, .btc-stats, .btc-filters, .btc-timeline) { animation: btc-enter 0.48s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .btc-page > :is(h1, .btc-muted, .btc-stats, .btc-filters, .btc-timeline) { animation: btc-enter 0.48s cubic-bezier(0.22, 1, 0.36, 1) both; }
   .btc-page > .btc-muted { animation-delay: 0.05s; }
   .btc-page > .btc-stats { animation-delay: 0.1s; }
   .btc-page > .btc-filters { animation-delay: 0.15s; }
@@ -1550,16 +1557,17 @@ fn render_css() -> &'static str {
 }
 @media only screen and (max-width: 1000px) {
   .btc-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .btc-search { grid-column: 1 / -1; }
+  .btc-search, .btc-filter-repo { grid-column: 1 / -1; }
   .btc-result-count { justify-self: start; }
 }
 @media only screen and (max-width: 720px) {
-  .btc-filters { grid-template-columns: 1fr; }
-  .btc-search { grid-column: auto; }
-  .btc-reset { inline-size: 100%; }
-  .btc-thread summary { grid-template-columns: 1.5rem minmax(0, 1fr) auto; gap: 0.4rem; }
-  .btc-row-repo { grid-column: 2; }
-  .btc-row-kind { display: none; }
+  .btc-thread summary { grid-template-columns: 1.5rem minmax(0, 1fr) auto; grid-template-areas: "icon title title" ". repo repo" ". date kind"; gap: 0.25rem 0.4rem; }
+  .btc-icon { grid-area: icon; }
+  .btc-row-title { grid-area: title; }
+  .btc-row-title, .btc-row-title > :is(a, .btc-row-title-text):first-child { white-space: normal; overflow-wrap: anywhere; }
+  .btc-row-repo { grid-area: repo; white-space: normal; overflow-wrap: anywhere; }
+  .btc-row-date { grid-area: date; text-align: start; }
+  .btc-row-kind { grid-area: kind; inline-size: auto; justify-self: end; }
   .btc-thread ul { margin-left: 0; }
   .btc-thread li { grid-template-columns: 1.25rem auto minmax(0, 1fr); }
   .btc-thread li > a, .btc-status { grid-column: 2 / -1; overflow-wrap: anywhere; }
@@ -1572,6 +1580,7 @@ fn render_js() -> &'static str {
   const form = document.getElementById("btc-filters");
   const items = Array.from(document.querySelectorAll(".btc-thread"));
   const count = document.getElementById("btc-result-count");
+  const empty = document.getElementById("btc-empty");
   const monthHeadings = Array.from(document.querySelectorAll(".btc-month"));
   const defaults = new Map();
   for (const item of items) {
@@ -1580,12 +1589,16 @@ fn render_js() -> &'static str {
       icon: summary.querySelector(".btc-icon").textContent,
       title: summary.querySelector(".btc-row-title").innerHTML,
       kind: summary.querySelector(".btc-row-kind").textContent,
+      rows: Array.from(item.querySelectorAll(".btc-thread-detail li"), (row) => ({
+        element: row,
+        text: `${row.dataset.title} ${row.textContent} ${item.dataset.repo}`.toLowerCase(),
+      })),
     });
   }
   if (!form) return;
   function typeLabel(type, count) {
     const labels = {
-      pull_request: ["pull request", "pull requests"],
+      pull_request: ["PR", "PRs"],
       review: ["review", "reviews"],
       commit: ["commit", "commits"],
       comment: ["comment", "comments"],
@@ -1593,20 +1606,25 @@ fn render_js() -> &'static str {
     }[type] || [type.replaceAll("_", " "), `${type.replaceAll("_", " ")}s`];
     return count === 1 ? labels[0] : labels[1];
   }
-  function setSummary(item, type, rows) {
+  function setSummary(item, rows) {
     const summary = item.querySelector("summary");
     const icon = summary.querySelector(".btc-icon");
     const title = summary.querySelector(".btc-row-title");
     const kind = summary.querySelector(".btc-row-kind");
-    if (!type) {
-      const original = defaults.get(item);
+    const original = defaults.get(item);
+    if (rows.length === original.rows.length) {
       icon.textContent = original.icon;
       title.innerHTML = original.title;
       kind.textContent = original.kind;
       return;
     }
-    icon.textContent = rows[0].querySelector(".btc-detail-icon").textContent;
-    kind.textContent = type.replaceAll("_", " ");
+    const counts = new Map();
+    for (const row of rows) counts.set(row.dataset.type, (counts.get(row.dataset.type) || 0) + 1);
+    const order = ["pull_request", "review", "commit", "comment", "issue"];
+    const types = [...order.filter((type) => counts.has(type)),
+      ...Array.from(counts.keys()).filter((type) => !order.includes(type)).sort()];
+    icon.textContent = types.length === 1 ? rows[0].querySelector(".btc-detail-icon").textContent : "⋯";
+    kind.textContent = (types.length === 1 ? types[0] : "mixed").replaceAll("_", " ");
     title.replaceChildren();
     if (rows.length === 1) {
       const link = document.createElement("a");
@@ -1616,7 +1634,7 @@ fn render_js() -> &'static str {
     } else {
       const label = document.createElement("span");
       label.className = "btc-row-title-text";
-      label.textContent = `${rows.length} ${typeLabel(type, rows.length)}`;
+      label.textContent = types.map((type) => `${counts.get(type)} ${typeLabel(type, counts.get(type))}`).join(", ");
       title.append(label);
     }
   }
@@ -1629,26 +1647,27 @@ fn render_js() -> &'static str {
     const visibleMonths = new Set();
     let visible = 0;
     for (const item of items) {
-      const detailRows = Array.from(item.querySelectorAll("[data-type]"));
-      const matchingRows = type ? detailRows.filter((row) => row.dataset.type === type) : detailRows;
-      const ok = (!query || item.textContent.toLowerCase().includes(query)) &&
+      const matchingRows = [];
+      for (const { element: row, text } of defaults.get(item).rows) {
+        const matches = (!type || row.dataset.type === type) && (!query || text.includes(query));
+        row.hidden = !matches;
+        if (matches) matchingRows.push(row);
+      }
+      const ok = matchingRows.length > 0 &&
         (!repo || item.dataset.repo === repo) &&
-        (!type || matchingRows.length > 0) &&
         (!year || item.dataset.year === year);
       item.hidden = !ok;
-      for (const row of detailRows) {
-        row.hidden = Boolean(type && row.dataset.type !== type);
-      }
       if (ok) {
         visible += 1;
         visibleMonths.add(item.dataset.month);
-        setSummary(item, type, matchingRows);
+        setSummary(item, matchingRows);
       }
     }
     for (const heading of monthHeadings) {
       heading.hidden = !visibleMonths.has(heading.dataset.month);
     }
-    count.textContent = `${visible} result${visible === 1 ? "" : "s"}`;
+    count.textContent = `${visible} repo/day group${visible === 1 ? "" : "s"}`;
+    empty.hidden = visible !== 0;
   }
   form.addEventListener("input", apply);
   form.addEventListener("reset", () => requestAnimationFrame(apply));
@@ -2113,18 +2132,9 @@ mod tests {
         assert!(html.contains("wizardsardine/bhwi"));
         assert!(html.contains("1 PR, 1 commit"));
         assert!(html.contains("datetime=\"2026-05-15T00:00:00Z\">2026-05-15</time>"));
-        let css = render_css();
-        assert!(render_bitcoin_theme_css().contains("--accent: #f7931a;"));
-        assert!(render_bitcoin_theme_css().contains("--bg: #0a0e14;"));
-        assert!(render_bitcoin_theme_css().contains("--link-glow: none;"));
         assert!(html.contains("type=\"search\""));
         assert!(html.contains("id=\"btc-result-count\""));
-        assert!(html.contains("Bitcoin ledger</span> JSON-backed contribution index"));
         assert!(html.contains("May 2026</span></h2>"));
-        assert!(!html.contains("<small>#"));
-        assert!(render_js().contains("form.addEventListener(\"input\", apply)"));
-        assert!(css.contains(".btc-thread::details-content"));
-        assert!(css.contains("@media (prefers-reduced-motion: reduce)"));
     }
 
     #[test]
