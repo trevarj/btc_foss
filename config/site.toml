@@ -1,4 +1,6 @@
 username = "trevarj"
+forgejo_username = "trev"
+forgejo_repos = ["rust-bitcoin/rust-bitcoin", "rust-bitcoin/rust-miniscript"]
 title = "Bitcoin FOSS Contributions"
 base_path = "/btc_foss/"
 site_root = "https://trevs.site"

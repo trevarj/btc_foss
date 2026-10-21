@@ -11,6 +11,8 @@ type Result<T> = std::result::Result<T, String>;
 #[derive(Clone, Debug, Default)]
 struct Config {
     username: String,
+    forgejo_username: String,
+    forgejo_repos: BTreeSet<String>,
     title: String,
     base_path: String,
     site_root: String,
@@ -75,7 +77,7 @@ fn run() -> Result<()> {
 }
 
 fn usage() -> Result<()> {
-    Err("usage: btc-contribs <collect|render|validate|fixture|curate> [--config PATH] [--feed PATH] [--state PATH] [--out PATH] [--body-file PATH] [--dry-run]".into())
+    Err("usage: btc-contribs <collect|render|validate|fixture|curate> [--config PATH] [--feed PATH] [--state PATH] [--out PATH] [--body-file PATH] [--dry-run] [--full]".into())
 }
 
 fn collect_cmd(args: &[String]) -> Result<()> {
@@ -96,7 +98,8 @@ fn collect_cmd(args: &[String]) -> Result<()> {
         username: config.username.clone(),
         events: Vec::new(),
     };
-    if Path::new(&state_path).exists() && !full {
+    let cached = Path::new(&state_path).exists() && !full;
+    if cached {
         feed = Feed::from_json_file(Path::new(&state_path))?;
         feed.generated_at = now_rfc3339();
     }
@@ -112,6 +115,15 @@ fn collect_cmd(args: &[String]) -> Result<()> {
     }
     let comments = fetch_comment_events(&token, &config, &from)?;
     merge_events(&mut feed.events, comments);
+    let forgejo_from = if cached {
+        (now_secs() - 6 * 86_400).max(now_secs() - config.bootstrap_months * 31 * 86_400)
+    } else {
+        now_secs() - config.bootstrap_months * 31 * 86_400
+    };
+    merge_events(
+        &mut feed.events,
+        fetch_forgejo_events(&config, forgejo_from, now_secs())?,
+    );
     prune_events_before(&mut feed.events, &from);
     feed.events
         .sort_by(|a, b| b.occurred_at.cmp(&a.occurred_at).then(a.id.cmp(&b.id)));
@@ -284,6 +296,7 @@ impl Config {
             let value = value.trim();
             match key {
                 "username" => cfg.username = parse_toml_string(value)?,
+                "forgejo_username" => cfg.forgejo_username = parse_toml_string(value)?,
                 "title" => cfg.title = parse_toml_string(value)?,
                 "base_path" => cfg.base_path = parse_toml_string(value)?,
                 "site_root" => cfg.site_root = parse_toml_string(value)?,
@@ -293,6 +306,9 @@ impl Config {
                         .map_err(|_| "invalid bootstrap_months".to_string())?
                 }
                 "allowlist" => cfg.allowlist = parse_toml_array(value)?.into_iter().collect(),
+                "forgejo_repos" => {
+                    cfg.forgejo_repos = parse_toml_array(value)?.into_iter().collect()
+                }
                 "keywords" => cfg.keywords = parse_toml_array(value)?,
                 "exclude" => cfg.exclude = parse_toml_array(value)?.into_iter().collect(),
                 _ => {}
@@ -300,6 +316,9 @@ impl Config {
         }
         if cfg.username.is_empty() {
             return Err("config/site.toml must set username".into());
+        }
+        if !cfg.forgejo_repos.is_empty() && cfg.forgejo_username.is_empty() {
+            return Err("config/site.toml must set forgejo_username with forgejo_repos".into());
         }
         Ok(cfg)
     }
@@ -661,6 +680,177 @@ fn event_from_node(kind: &str, repo: &str, node: &Json, username: &str) -> Optio
 fn commit_day_url(repo: &str, username: &str, occurred_at: &str) -> String {
     let day = occurred_at.get(0..10).unwrap_or(occurred_at);
     format!("https://github.com/{repo}/commits?author={username}&since={day}T00:00:00Z&until={day}T23:59:59Z")
+}
+
+const FORGEJO_HOST: &str = "git.rust-bitcoin.org";
+const FORGEJO_URL: &str = "https://git.rust-bitcoin.org";
+
+fn fetch_forgejo_events(config: &Config, from_secs: i64, to_secs: i64) -> Result<Vec<Event>> {
+    let mut events = Vec::new();
+    if config.forgejo_repos.is_empty() {
+        return Ok(events);
+    }
+    for day in from_secs.div_euclid(86_400)..=to_secs.div_euclid(86_400) {
+        let date = unix_to_rfc3339(day * 86_400);
+        let date = &date[..10];
+        let mut page = 1;
+        loop {
+            let url = format!("{FORGEJO_URL}/api/v1/orgs/rust-bitcoin/activities/feeds?date={date}&limit=50&page={page}");
+            let output = Command::new("curl")
+                .args(["-fsS", &url])
+                .output()
+                .map_err(|e| format!("Forgejo {date} page {page}: failed to run curl: {e}"))?;
+            if !output.status.success() {
+                return Err(format!(
+                    "Forgejo {date} page {page}: HTTP request failed ({}): {}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ));
+            }
+            let body = String::from_utf8(output.stdout)
+                .map_err(|e| format!("Forgejo {date} page {page}: {e}"))?;
+            let json = parse_json(&body)
+                .map_err(|e| format!("Forgejo {date} page {page}: invalid JSON: {e}"))?;
+            let activities = json
+                .array()
+                .ok_or_else(|| format!("Forgejo {date} page {page}: expected activity array"))?;
+            for activity in activities {
+                if let Some(event) = forgejo_event(config, activity) {
+                    events.push(event);
+                }
+            }
+            if activities.len() < 50 {
+                break;
+            }
+            page += 1;
+        }
+    }
+    Ok(events)
+}
+
+fn forgejo_event(config: &Config, activity: &Json) -> Option<Event> {
+    let repo = activity.get_path(&["repo", "full_name"])?.string()?;
+    if activity.get_path(&["act_user", "login"])?.string()? != config.forgejo_username
+        || !config.forgejo_repos.contains(repo)
+    {
+        return None;
+    }
+    let id = activity.get("id")?.number()?;
+    if !id.is_finite() || id <= 0.0 || id.fract() != 0.0 {
+        return None;
+    }
+    let occurred_at = activity.get("created")?.string()?;
+    if occurred_at.is_empty() {
+        return None;
+    }
+    let op = activity.get("op_type")?.string()?;
+    let content = parse_json(activity.get("content")?.string()?).ok()?;
+    let repo_key = format!("{FORGEJO_HOST}/{repo}");
+    let event_id = format!("{FORGEJO_HOST}:{id:.0}");
+    if op == "commit_repo" {
+        let commits = content.get("Commits")?.array()?;
+        if commits.is_empty() {
+            return None;
+        }
+        let url = if let Some(compare) = content
+            .get("CompareURL")
+            .and_then(Json::string)
+            .filter(|path| path.starts_with(&format!("{repo}/compare/")))
+        {
+            format!("{FORGEJO_URL}/{compare}")
+        } else {
+            let sha = commits.last()?.get("Sha1")?.string()?;
+            if sha.len() != 40 || !sha.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return None;
+            }
+            format!("{FORGEJO_URL}/{repo}/commit/{sha}")
+        };
+        let branch = activity
+            .get("ref_name")
+            .and_then(Json::string)
+            .and_then(|name| name.strip_prefix("refs/heads/"));
+        let title = format!(
+            "{} commit{} to {}",
+            commits.len(),
+            if commits.len() == 1 { "" } else { "s" },
+            branch.unwrap_or(repo)
+        );
+        return Some(Event {
+            id: event_id.clone(),
+            event_type: "commit".into(),
+            repo: repo_key,
+            title: title.clone(),
+            url: url.clone(),
+            occurred_at: occurred_at.into(),
+            thread_id: event_id,
+            thread_title: title,
+            thread_url: url,
+            status: String::new(),
+        });
+    }
+
+    let parts = content.array()?;
+    let number = parts.first()?.string()?;
+    if number.is_empty() || !number.bytes().all(|b| b.is_ascii_digit()) || number == "0" {
+        return None;
+    }
+    let (kind, target, action, status) = match op {
+        "create_issue" => ("issue", "issues", "Opened", "OPEN"),
+        "close_issue" => ("issue", "issues", "Closed", "CLOSED"),
+        "reopen_issue" => ("issue", "issues", "Reopened", "OPEN"),
+        "create_pull_request" => ("pull_request", "pulls", "Opened", "OPEN"),
+        "close_pull_request" => ("pull_request", "pulls", "Closed", "CLOSED"),
+        "reopen_pull_request" => ("pull_request", "pulls", "Reopened", "OPEN"),
+        "merge_pull_request" => ("pull_request", "pulls", "Merged", "MERGED"),
+        "approve_pull_request" => ("review", "pulls", "Reviewed", "APPROVED"),
+        "reject_pull_request" => ("review", "pulls", "Reviewed", "CHANGES_REQUESTED"),
+        "comment_issue" => ("comment", "issues", "Commented on", ""),
+        "comment_pull" => ("comment", "pulls", "Commented on", ""),
+        _ => return None,
+    };
+    let target_name = if target == "issues" { "Issue" } else { "PR" };
+    let thread_title = if kind == "issue" || kind == "pull_request" {
+        parts
+            .get(1)
+            .and_then(Json::string)
+            .filter(|title| !title.is_empty())
+            .unwrap_or("")
+    } else {
+        ""
+    };
+    let thread_title = if thread_title.is_empty() {
+        format!("{target_name} #{number}")
+    } else {
+        thread_title.to_string()
+    };
+    let thread_url = format!("{FORGEJO_URL}/{repo}/{target}/{number}");
+    let comment_url = activity
+        .get_path(&["comment", "html_url"])
+        .and_then(Json::string)
+        .filter(|url| {
+            url.starts_with(&format!("{thread_url}#")) || url.starts_with(&format!("{thread_url}/"))
+        });
+    let url = if kind == "comment" || kind == "review" {
+        if kind == "comment" {
+            comment_url?.to_string()
+        } else {
+            comment_url.unwrap_or(&thread_url).to_string()
+        }
+    } else {
+        thread_url.clone()
+    };
+    Some(Event {
+        id: event_id,
+        event_type: kind.into(),
+        repo: repo_key.clone(),
+        title: format!("{action} {thread_title}"),
+        url,
+        occurred_at: occurred_at.into(),
+        thread_id: format!("{repo_key}/{target}/{number}"),
+        thread_title,
+        thread_url,
+        status: status.into(),
+    })
 }
 
 fn fetch_comment_events(token: &str, config: &Config, from: &str) -> Result<Vec<Event>> {
@@ -1152,7 +1342,7 @@ fn render_html(config: &Config, feed: &Feed) -> String {
         html(&config.title)
     )
     .unwrap();
-    writeln!(out, "<p class=\"btc-muted\">Public GitHub activity for <a href=\"https://github.com/{0}\">{0}</a>. Updated <time datetime=\"{1}\">{3}</time>. <a href=\"{2}feed.json\">feed.json</a></p>", html_attr(&feed.username), html_attr(&feed.generated_at), html_attr(&config.base_path), html(&short_date(&feed.generated_at))).unwrap();
+    writeln!(out, "<p class=\"btc-muted\">Public GitHub activity for <a href=\"https://github.com/{0}\">{0}</a> and Forgejo activity for <a href=\"https://git.rust-bitcoin.org/{4}\">{4}</a>. Updated <time datetime=\"{1}\">{3}</time>. <a href=\"{2}feed.json\">feed.json</a></p>", html_attr(&feed.username), html_attr(&feed.generated_at), html_attr(&config.base_path), html(&short_date(&feed.generated_at)), html_attr(&config.forgejo_username)).unwrap();
     writeln!(
         out,
         "<section class=\"btc-stats\" aria-label=\"Contribution summary\">"
@@ -2096,6 +2286,118 @@ mod tests {
     }
 
     #[test]
+    fn forgejo_converts_activity_without_colliding_with_github() {
+        let cfg = Config {
+            forgejo_username: "trev".into(),
+            forgejo_repos: ["rust-bitcoin/rust-bitcoin", "rust-bitcoin/rust-miniscript"]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+            ..Config::default()
+        };
+        let make = |id: u32, op: &str, repo: &str, actor: &str, content: &str, comment: &str| {
+            parse_json(&format!(
+                r#"{{"id":{id},"op_type":"{op}","act_user":{{"login":"{actor}"}},"repo":{{"full_name":"{repo}"}},"created":"2026-10-19T13:53:39Z","content":"{}","comment":{{"html_url":"{comment}"}},"ref_name":"refs/heads/master"}}"#,
+                json_escape(content)
+            ))
+            .unwrap()
+        };
+        let repo = "rust-bitcoin/rust-miniscript";
+        let issue = forgejo_event(
+            &cfg,
+            &make(1, "create_issue", repo, "trev", r#"["713","Fix docs"]"#, ""),
+        )
+        .unwrap();
+        assert_eq!(issue.event_type, "issue");
+        assert_eq!(issue.title, "Opened Fix docs");
+        assert_eq!(issue.status, "OPEN");
+        assert_eq!(
+            issue.url,
+            "https://git.rust-bitcoin.org/rust-bitcoin/rust-miniscript/issues/713"
+        );
+        let pr = forgejo_event(
+            &cfg,
+            &make(
+                2,
+                "merge_pull_request",
+                repo,
+                "trev",
+                r#"["17","Update docs"]"#,
+                "",
+            ),
+        )
+        .unwrap();
+        assert_eq!(pr.event_type, "pull_request");
+        assert_eq!(pr.status, "MERGED");
+        assert_eq!(pr.thread_title, "Update docs");
+        let review = forgejo_event(
+            &cfg,
+            &make(3, "approve_pull_request", repo, "trev", r#"["17","ACK"]"#,
+                "https://git.rust-bitcoin.org/rust-bitcoin/rust-miniscript/pulls/17#issuecomment-321"),
+        )
+        .unwrap();
+        assert_eq!(review.event_type, "review");
+        assert_eq!(review.status, "APPROVED");
+        assert!(review.url.ends_with("/pulls/17#issuecomment-321"));
+        let comment = forgejo_event(
+            &cfg,
+            &make(4, "comment_issue", repo, "trev", r#"["713","Dope"]"#,
+                "https://git.rust-bitcoin.org/rust-bitcoin/rust-miniscript/issues/713#issuecomment-322"),
+        )
+        .unwrap();
+        assert_eq!(comment.event_type, "comment");
+        assert_eq!(comment.title, "Commented on Issue #713");
+        assert!(comment.url.ends_with("/issues/713#issuecomment-322"));
+        assert!(forgejo_event(
+            &cfg,
+            &make(5, "comment_issue", repo, "trev", r#"["713","Dope"]"#, "")
+        )
+        .is_none());
+        let push = forgejo_event(
+            &cfg,
+            &make(6, "commit_repo", "rust-bitcoin/rust-bitcoin", "trev",
+                r#"{"Commits":[{"Sha1":"abcdef","Message":"Fix"}],"CompareURL":"rust-bitcoin/rust-bitcoin/compare/123...abcdef"}"#, ""),
+        )
+        .unwrap();
+        assert_eq!(push.event_type, "commit");
+        assert_eq!(push.title, "1 commit to master");
+        assert!(push
+            .url
+            .ends_with("/rust-bitcoin/rust-bitcoin/compare/123...abcdef"));
+        assert!(forgejo_event(
+            &cfg,
+            &make(7, "create_issue", repo, "other", r#"["1","No"]"#, "")
+        )
+        .is_none());
+        assert!(forgejo_event(
+            &cfg,
+            &make(
+                8,
+                "create_issue",
+                "rust-bitcoin/other",
+                "trev",
+                r#"["1","No"]"#,
+                ""
+            )
+        )
+        .is_none());
+        let mut events = vec![Event {
+            id: "1".into(),
+            repo: repo.into(),
+            ..issue.clone()
+        }];
+        merge_events(&mut events, vec![issue, pr, review, comment, push]);
+        assert_eq!(events.len(), 6);
+        assert!(events
+            .iter()
+            .any(|event| event.id == "1" && event.repo == repo));
+        assert!(events
+            .iter()
+            .any(|event| event.id == "git.rust-bitcoin.org:1"
+                && event.repo == "git.rust-bitcoin.org/rust-bitcoin/rust-miniscript"));
+    }
+
+    #[test]
     fn feed_round_trip_fixture() {
         let feed = Feed::from_json_file(Path::new("fixtures/feed.json")).unwrap();
         assert!(feed.events.len() >= 3);
@@ -2118,6 +2420,8 @@ mod tests {
             base_path: "/btc_foss/".into(),
             site_root: "https://trevs.site".into(),
             bootstrap_months: 24,
+            forgejo_username: "trev".into(),
+            forgejo_repos: BTreeSet::new(),
             allowlist: BTreeSet::new(),
             keywords: vec!["bitcoin".into()],
             exclude: BTreeSet::new(),
