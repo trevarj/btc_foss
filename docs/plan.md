@@ -13,6 +13,8 @@ Used to audit my work and prove that I am active in the Bitcoin space.
   Normal collection refreshes the last seven days of Forgejo activity; `--full`
   and a missing cache scan the configured window. Forgejo events have host-prefixed
   repository keys and IDs to distinguish them from GitHub contributions.
+- Deploys to GitHub Pages in a separate job after the build and artifact upload
+  finish, so a failed deployment can be rerun without recollecting activity.
 - Compact repo/day groups are collapsed by default; native expandable details
   retain each event's date, type, title, status, and source link.
 - Desktop rows keep icon, title, repository, date, and type columns with a small
